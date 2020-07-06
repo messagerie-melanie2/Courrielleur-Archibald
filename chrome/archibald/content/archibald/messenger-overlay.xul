@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<?xml-stylesheet href="chrome://archibald/skin/archibald.css" type="text/css"?>
+
+<!DOCTYPE overlay SYSTEM "chrome://archibald/locale/archibald.dtd">
+
+<overlay id="archibald"
+          xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
+
+  <script type="application/x-javascript" src="chrome://archibald/content/messenger-overlay.js"/>
+
+  <popup id="folderPaneContext">
+    <menuitem id="archibald.context"
+          label="&archibald.context.lib;"
+          accesskey="&archibald.context.key;"
+          oncommand="menuArchive();"
+          insertafter="folderPaneContext-searchMessages"/>
+
+  </popup>
+
+  <toolbarpalette id="MailToolbarPalette">
+
+    <toolbarbutton id="archibald-btarchive"
+                   class="toolbarbutton-1"
+                   type="menu-button"
+                   label="&archibald.btarchive;"
+                   tooltiptext="&archibald.btarchive.tooltip;"
+                   oncommand="btArchive(event);">
+      <menupopup onpopupshowing="btArchiShowing(event)" id="archibald-menupopup">
+      </menupopup>
+    </toolbarbutton>
+
+  </toolbarpalette>
+
+</overlay>

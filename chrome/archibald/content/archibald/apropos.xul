@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<?xml-stylesheet href="chrome://archibald/skin/archibald.css" type="text/css"?>
+
+<?xul-overlay href="chrome://courrielleur/content/ministeresOverlay.xul"?>
+
+<!DOCTYPE window SYSTEM "chrome://archibald/locale/archibald.dtd">
+
+<window title="&archibald.apropos.titre;"
+        id="apropos-dlg"
+        xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
+
+  <script type="application/x-javascript" src="chrome://archibald/content/archibaldutils.js"/>
+
+  <keyset id="keys">
+    <key keycode="VK_ESCAPE" oncommand="window.close();"/>
+  </keyset>
+
+  <vbox id="bandeau" class="bandeau">
+    <description id="bandeau-titre" class="bandeau-titre">&archibald.apropos.text1;</description>
+  </vbox>
+
+  <hbox id="apropos-cadre" flex="1">
+
+    <vbox id="apropos-collogo" width="32px"/>
+
+    <vbox id="apropos-cadredesc" flex="1">
+
+      <description class="aproposdesc">&archibald.apropos.text2;</description>
+      <description class="aproposdesc">&archibald.apropos.text3;</description>
+
+      <vbox id="infosapropos"/>
+
+    </vbox>
+
+  </hbox>
+
+  <hbox align="right">
+    <button label="Fermer" oncommand="close();"/>
+  </hbox>
+</window>

@@ -1,0 +1,104 @@
+<?xml version="1.0"?>
+
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<?xml-stylesheet href="chrome://archibald/skin/archibald.css" type="text/css"?>
+
+<!DOCTYPE page SYSTEM "chrome://archibald/locale/archibald.dtd">
+
+<page xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+      class="color-dialog"
+      onload="parent.onPanelLoaded('am-archibald.xul');"
+      orient="vertical">
+
+
+  <script type="application/x-javascript" src="chrome://messenger/content/AccountManager.js"/>
+
+  <script type="application/x-javascript" src="chrome://archibald/content/archibaldutils.js"/>
+  <script type="application/x-javascript" src="chrome://archibald/content/archibald.js"/>
+  <script type="application/x-javascript" src="chrome://archibald/content/am-archibald.js"/>
+  <script type="application/x-javascript" src="chrome://pacome/content/dossierlocal.js"/>
+  <script type="application/x-javascript" src="chrome://pacome/content/pacomeutils.js"/>
+
+  <dialogheader id="am-titre" title="&am-archibald.titre;"/>
+  <description id="am-desc">&am-archibald.desc;</description>
+
+  <vbox id="am-archibald" flex="1">
+    <checkbox label="&archibald.libarchivage;"
+                      checked="false"
+                      id="archibald.etat"
+                      oncommand="checkArchive(event);"/>
+
+    <broadcasterset>
+      <broadcaster id="archibald.actif" disabled="true"/>
+    </broadcasterset>
+
+    <groupbox>
+
+      <label id="archibald.nonarchivable" value="&archibald.nonarchivable;" hidden="true"/>
+      <hbox id="archibald.paramarchive" flex="1">
+      <grid flex="1">
+        <columns>
+          <column/>
+          <column flex="1"/>
+        </columns>
+        <rows>
+          <row><spacer height="4px"/></row>
+          <row>
+            <hbox><hbox flex="1"/><label value="&archibald.libdossiers;"/></hbox>
+            <hbox>
+              <menulist id="archibald.dossiers" class="parametrage-dossiers" flex="1">
+                <observes element="archibald.actif" attribute="disabled"/>
+              </menulist>
+            </hbox>
+          </row>
+          <row>
+            <spacer/>
+            <hbox>
+              <button id="nouveau" label="&archibald.nouveau;" oncommand="ArchiNouveauDossier()">
+                <observes element="archibald.actif" attribute="disabled"/>
+              </button>
+              <button id="btoptions" label="&archibald.btoptions;" oncommand="ArchiOptionsDossiers()">
+                <observes element="archibald.actif" attribute="disabled"/>
+              </button>
+              <hbox flex="1"/>
+            </hbox>
+          </row>
+          <spacer height="8px"/>
+          <row>
+            <hbox/>
+            <hbox>
+              <button id="archibald.HierarchyButton"
+                      label="&archibald.HierarchyButton;" accesskey="&archibald.HierarchyButtonKey;"
+                      oncommand="archiChangeHierarchy();">
+                <observes element="archibald.actif" attribute="disabled"/>
+              </button>
+              <label id="archibald.Hierarchy" flex="1"/>
+            </hbox>
+          </row>
+          <spacer height="8px"/>
+          <row>
+            <label value="&archibald.agejours;"/>
+            <hbox>
+              <textbox id="archibald.agejours"
+                        maxlength="4"
+                        size="4"
+                        oninput="saisieJours();"
+                        value="90">
+                <observes element="archibald.actif" attribute="disabled"/>
+              </textbox>
+              <label value="&archibald.libjours;"/>
+              <datepicker type="popup" id="archidt" firstdayofweek="1" onchange="window.setTimeout(archiChgDate, 0, this);">
+                <observes element="archibald.actif" attribute="disabled"/>
+              </datepicker>
+            </hbox>
+          </row>
+
+        </rows>
+      </grid>
+
+      </hbox>
+
+    </groupbox>
+  </vbox>
+
+</page>

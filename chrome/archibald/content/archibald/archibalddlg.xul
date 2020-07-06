@@ -1,0 +1,74 @@
+<?xml version="1.0"?>
+
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<?xml-stylesheet href="chrome://archibald/skin/archibald.css" type="text/css"?>
+
+<?xul-overlay href="chrome://courrielleur/content/ministeresOverlay.xul"?>
+
+<!DOCTYPE window SYSTEM "chrome://archibald/locale/archibald.dtd">
+
+<window id="archibalddlg"
+        class="archibalddlg"
+        xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        title="&archibalddlg.titre;"
+        onload="initArchibaldDlg();">
+
+  <script type="application/x-javascript" src="chrome://archibald/content/archibaldutils.js"/>
+  <script type="application/x-javascript" src="chrome://archibald/content/archibalddlg.js"/>
+  <script type="application/x-javascript" src="chrome://archibald/content/archibald.js"/>
+  <script type="application/x-javascript" src="chrome://archibald/content/optiondossiers.js"/>
+  <script type="application/x-javascript" src="chrome://archibald/content/archivage.js"/>
+  <script type="application/x-javascript" src="chrome://archibald/content/archibaldsync.js"/>
+  <script type="application/x-javascript" src="chrome://archibald/content/archiDiscoverFolders.js"/>
+  <script type="application/x-javascript" src="chrome://archibald/content/archibaldlock.js"/>
+  <script type="application/x-javascript" src="chrome://pacome/content/dossierlocal.js"/>
+  <script type="application/x-javascript" src="chrome://pacome/content/pacomeutils.js"/>
+
+  <vbox id="bandeau" class="bandeau">
+    <description id="bandeau-titre" class="bandeau-titre">&archibald.apropos.text1;</description>
+  </vbox>
+
+  <vbox flex="1" class="archibald_zone">
+    <groupbox flex="1">
+
+      <caption label="&archibalddlg.libetat;"/>
+
+      <grid>
+        <columns>
+          <column flex="5"/>
+          <column/>
+          <column/>
+          <column/>
+          <column/>
+        </columns>
+        <rows id="archibalddlg.rows">
+          <row>
+            <label id="col1" value="&archibalddlg.colbal;" class="entete col1"/>
+            <label value="&archibalddlg.colnb;" tooltiptext="&archibalddlg.colnbtip;" class="entete col2"/>
+            <label value="&archibalddlg.colnbar;" tooltiptext="&archibalddlg.colnbartip;" class="entete col2"/>
+            <label value="&archibalddlg.colnbsup;" tooltiptext="&archibalddlg.colnbsuptip;" class="entete col2"/>
+          </row>
+        </rows>
+      </grid>
+
+      <spacer height="8px"/>
+
+      <vbox id="infos">
+        <label id="archibalddlg-etat" value=""/>
+        <progressmeter id="archibalddlg.vu" mode="determined" value="0"/>
+      </vbox>
+
+    </groupbox>
+  </vbox>
+
+  <vbox id="infosapropos" style="margin-left:12px"/>
+
+  <menuseparator/>
+
+  <hbox>
+    <spacer flex="1"/>
+    <button id="archibalddlg.btquitter" label="&archibalddlg.btquitter;" oncommand="btArchibaldQuitter();"/>
+    <spacer flex="1"/>
+  </hbox>
+
+</window>

@@ -1,0 +1,4 @@
+# archibald.js
+component {A6021868-82C4-475a-831B-EB5022282179} archibald.js
+contract @mozilla.org/accountmanager/extension;1?name=archibald {A6021868-82C4-475a-831B-EB5022282179}
+category mailnews-accountmanager-extensions archibald-account-manager-extension @mozilla.org/accountmanager/extension;1?name=archibald

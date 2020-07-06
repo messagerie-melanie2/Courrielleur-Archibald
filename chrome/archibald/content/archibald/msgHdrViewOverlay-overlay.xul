@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+
+
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<?xml-stylesheet href="chrome://archibald/skin/archibald.css" type="text/css"?>
+
+<!DOCTYPE overlay SYSTEM "chrome://archibald/locale/archibald.dtd">
+
+<overlay id="archimsg"
+          xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
+
+  <script type="application/x-javascript" src="chrome://archibald/content/archibaldutils.js"/>
+  <script type="application/x-javascript" src="chrome://archibald/content/optiondossiers.js"/>
+  <script type="application/x-javascript" src="chrome://archibald/content/archibald.js"/>
+  <script type="application/x-javascript" src="chrome://archibald/content/archivage.js"/>
+  <script type="application/x-javascript" src="chrome://archibald/content/archibaldsync.js"/>
+  <script type="application/x-javascript" src="chrome://archibald/content/archibaldlock.js"/>
+
+  <toolbarbutton id="hdrArchiveButton"
+                  oncommand="archibaldArchiveSelectedMessages(event);RestoreFocusAfterHdrButton();"/>
+
+</overlay>

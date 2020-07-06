@@ -1,0 +1,8 @@
+content  archibald  archibald/content/archibald/
+skin  archibald  classic/1.0  archibald/skin/classic/archibald/ os=WINNT
+skin  archibald  classic/1.0  archibald/skin/classic/gnomestripe/archibald/ os!=WINNT
+overlay  chrome://messenger/content/AccountManager.xul  chrome://archibald/content/accountmanager-overlay.xul
+overlay  chrome://messenger/content/messenger.xul  chrome://archibald/content/messenger-overlay.xul
+overlay  chrome://messenger/content/msgHdrViewOverlay.xul  chrome://archibald/content/msgHdrViewOverlay-overlay.xul
+style  chrome://messenger/content/messengercompose/messengercompose.xul  chrome://archibald/skin/archibald.css
+style chrome://global/content/customizeToolbar.xul chrome://archibald/skin/archibald.css

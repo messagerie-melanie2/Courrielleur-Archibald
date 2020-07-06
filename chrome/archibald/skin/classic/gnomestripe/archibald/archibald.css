@@ -1,0 +1,243 @@
+
+/* boite de dialogue options des dossiers */
+treechildren::-moz-tree-image(colmode) {
+  list-style-image: url("chrome://archibald/skin/archiver.png");
+}
+
+treechildren::-moz-tree-image(colmode, optiondossier-A) {
+  list-style-image: url("chrome://archibald/skin/archiver.png");
+}
+
+treechildren::-moz-tree-image(colmode, optiondossier-I) {
+  list-style-image: url("chrome://archibald/skin/ignorer.png");
+}
+
+treechildren::-moz-tree-image(colmode, optiondossier-S) {
+  list-style-image: url("chrome://archibald/skin/supprimer.png");
+}
+
+#colmode{
+  width:80px;
+}
+
+#cadrecompte label{
+  font-size:10pt;
+  font-weight:bold;
+  background-color:rgb(172,172,172);
+  padding-left:4px;
+  padding-right:4px;
+  padding-top:4px;
+  padding-bottom:2px;
+  /* crop:end;*/ 
+}
+
+#descboite{
+  padding-left:4px;
+  font-size:9pt;
+  font-weight:500;
+}
+
+/* v3 */
+.archibalddlg {
+
+  width:500px;
+  /* min-height:350px; */
+  background-color:white;
+}
+
+.archibalddlg grid{
+  overflow:auto;
+}
+
+.entete{
+  background:rgb(212,208,200);
+  border-style:solid;
+  border-width:1px;
+  border-color:gray;
+  margin:0px;
+  padding-left:6px;
+  padding-bottom:2px;
+  padding-top:2px;
+  padding-right:2px;
+  
+  font-family:arial;
+  font-size:8pt;
+  font-weight:500;
+}
+.col1{
+  
+}
+.col2{
+  min-width:60px;
+}
+.col3{
+  min-width:60px;
+}
+
+.archibalddlg resizer{
+  background-color:white;
+}
+
+.bandeau{
+  height:50px;
+  background-color: #CCE1A2;
+}
+
+.bandeau-titre{
+  margin-left:10px; 
+  margin-top:14px; 
+  font-size: 14pt;
+  font-family: Arial;
+  color:#385C02;
+}
+
+.archibald_zone{
+  margin-left:10px;
+  margin-right:10px;
+  /* margin-top:20px;*/
+  padding-top:10px;
+  /*padding-bottom:10px;*/
+}
+
+.archibald_zone grid {
+  padding-top:10px;
+  padding-left:4px;
+  padding-right:4px;
+}
+
+.archibald_zone groupbox {
+  -moz-appearance: none;
+}
+
+
+.archibald_zone richlistitem{
+  border-bottom-style:solid;
+  border-bottom-width:1px;
+  border-bottom-color:lightgrey;
+  padding-left:2px;
+}
+
+.archibald_zone richlistitem[selected=true]{
+  background-color:white;
+  color:black;
+}
+
+.archibald_zone richlistitem label{
+  margin-top:6px;
+  margin-left:2px;
+}
+
+.archibald_zone caption{
+  font-family:arial;
+  font-size:12px;
+  font-weight:bold;
+  background-color:white;
+}
+
+.archibald_zone label{
+  font-size: 9pt;
+  font-family: Arial;
+}
+
+#infos label {
+  margin-left:8px;
+}
+
+.balencours{
+  background-color:rgb(200,225,240);
+}
+
+
+/* boite a propos */
+#apropos-dlg{
+  background-color:white;
+}
+
+#apropos-cadre{
+  padding-top:20px;
+  margin-left:10px;
+  margin-right:10px;
+}
+
+.aproposdesc{
+  font-family:arial;
+  font-size:12px;
+  font-weight:600;
+}
+
+.apropos-libministere{
+
+  font-family:arial;
+  font-size:12px;
+  font-weight:600;
+
+  margin-bottom: 6px;
+  color:#385C02;
+}
+
+.apropos-libministere2{
+  font-family:arial;
+  font-size:12px;
+  font-weight:600;
+  margin-top:24px;
+  margin-bottom: 2px;
+  color:rgb(72,33,64);
+}
+
+.apropos-grid {
+  border-top-style:solid;
+  border-top-width:1px;
+  border-top-color:blue;
+  margin-top: 2px; 
+  padding-top: 2px;
+}
+
+
+#apropos-collogo{
+  padding-top:60px;	
+}
+
+#apropos-cadredesc{
+  padding-left:4px;
+}
+
+
+.archibalddlg progressmeter{
+
+  height:24px;
+}
+
+#archibalddlg-etat {
+  color: rgb(140, 48, 64); font-weight: 600; font-size: 12px;
+}
+
+#am-archibald   row   label {
+  margin-top:8px;
+}
+
+/* Boite de confirmation d'archivage avec choix de periode */
+#dlgconfirm {
+  padding-left:14px;
+  padding-right:14px; 
+  margin-top:20px;
+  /*max-width:400px;*/
+}
+
+.dlgconfirm-question {
+  text-align: center;
+  /*font-family:arial;*/
+  font-family: Verdana, Arial, Helvetica, sans-serif;
+  font-size:10pt;
+  font-weight:bold;
+  /*font-style: italic;*/
+  color:darkblue;
+}
+
+#dlgconfirm-periode grid{
+  padding:8px;
+  border:solid 1px gray;
+  border-radius:2px;
+  background-color:lightgray;
+}
+
+

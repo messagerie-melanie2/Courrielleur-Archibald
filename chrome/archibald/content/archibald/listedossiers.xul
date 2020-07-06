@@ -1,0 +1,75 @@
+<?xml version="1.0"?>
+
+<!DOCTYPE window >
+
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:nc="http://home.netscape.com/NC-rdf#"
+        width="800px"
+        height="600px">
+
+  <vbox flex="1">
+
+    <tree datasources="rdf:msgaccountmanager rdf:mailnewsfolders" flex="1" ref="msgaccounts:/" hidecolumnpicker="true">
+      <treecols>
+        <treecol  flex="3" primary="true" label="Name"/>
+        <splitter class="tree-splitter"/>
+        <treecol flex="1" label="SpecialFolder"/>
+        <splitter  class="tree-splitter"/>
+        <treecol flex="10" label="URI"/>
+        <splitter  class="tree-splitter"/>
+        <treecol label="TotalMessages"/>
+        <splitter  class="tree-splitter"/>
+        <treecol  label="CanFileMessages"/>
+         <splitter  class="tree-splitter"/>
+        <treecol label="CanDeleteMessages"/>
+        <splitter  class="tree-splitter"/>
+        <treecol  label="CanCreateSubfolders"/>
+        <splitter  class="tree-splitter"/>
+        <treecol  label="ImapShared"/>
+        <splitter  class="tree-splitter"/>
+        <treecol  label="ServerType"/>
+        <splitter  class="tree-splitter"/>
+        <treecol  label="SupportsOffline"/>
+        <splitter  class="tree-splitter"/>
+        <treecol  label="CanCompact"/>
+        <splitter  class="tree-splitter"/>
+        <treecol  label="RedirectorType"/>
+
+      </treecols>
+
+      <template>
+
+        <rule nc:ServerType="imap" >
+          <treechildren>
+            <treeitem uri="rdf:*" open="true">
+              <treerow>
+                <treecell label="rdf:http://home.netscape.com/NC-rdf#Name"/>
+                <!--<treecell label="..."/>-->
+                <treecell label="rdf:http://home.netscape.com/NC-rdf#SpecialFolder"/>
+                <treecell label="..."/>
+                <treecell label="rdf:http://home.netscape.com/NC-rdf#TotalMessages"/>
+                <treecell label="rdf:http://home.netscape.com/NC-rdf#CanFileMessages"/>
+                <treecell label="rdf:http://home.netscape.com/NC-rdf#CanDeleteMessages"/>
+                <treecell label="rdf:http://home.netscape.com/NC-rdf#CanCreateSubfolders"/>
+                <treecell label="rdf:http://home.netscape.com/NC-rdf#ImapShared"/>
+                <treecell label="rdf:http://home.netscape.com/NC-rdf#ServerType"/>
+                <treecell label="rdf:http://home.netscape.com/NC-rdf#SupportsOffline"/>
+                <treecell label="rdf:http://home.netscape.com/NC-rdf#CanCompact"/>
+                <treecell label="rdf:http://home.netscape.com/NC-rdf#RedirectorType"/>
+
+              </treerow>
+            </treeitem>
+          </treechildren>
+        </rule>
+
+      </template>
+
+    </tree>
+
+
+	</vbox>
+
+
+</window>

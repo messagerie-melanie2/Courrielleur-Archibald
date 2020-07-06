@@ -1,0 +1,65 @@
+
+<!ENTITY archibald.titre "Paramétrage de l'archivage du compte">
+<!ENTITY archibald.libarchivage "Activer l'archivage">
+<!-- <!ENTITY archibald.agejours "Archiver les messages de plus de :"> -->
+<!ENTITY archibald.agejours "Messages de plus de :">
+<!ENTITY archibald.libjours "jours, soit jusqu'au :">
+<!ENTITY archibald.nonarchivable "Ce compte ne peut pas être archivé">
+<!ENTITY archibald.libdossiers "Dossier d'archivage :">
+<!ENTITY archibald.btoptions "Options des dossiers...">
+<!ENTITY archibald.modecopie "Copier les messages lors de l'archivage">
+<!ENTITY archibald.nouveau "Nouveau dossier...">
+
+<!ENTITY archibald.btarchive "Archiver">
+<!ENTITY archibald.btarchive.tooltip "Archivage de boîte à lettres">
+<!ENTITY archibald.archivetout "Archiver tous les comptes">
+
+<!ENTITY archibalddlg.titre "Archivage de boîte à lettres">
+<!ENTITY archibalddlg.btquitter "Quitter">
+<!ENTITY archibalddlg.btarch "Archiver">
+<!ENTITY archibalddlg.colbal "Boîte à lettres">
+<!ENTITY archibalddlg.colnb "Messages">
+<!ENTITY archibalddlg.lib "Résultats de l'archivage">
+
+<!ENTITY archibalddlg.colnbar "Archivés">
+<!ENTITY archibalddlg.colnbartip "Indique le nombre de messages qui ont été archivés">
+<!ENTITY archibalddlg.colnbsup "Supprimés">
+<!ENTITY archibalddlg.colnbsuptip "Indique le nombre de messages qui ont été supprimés">
+<!ENTITY archibalddlg.colnbtip "Indique le nombre de messages trouvés lors de la recherche">
+
+<!ENTITY archibalddlg.libetat "Progression">
+
+<!ENTITY archibald.apropos.titre "A propos d'ArchiBald">
+<!ENTITY archibald.apropos.text1 "ARCHIvage de Boîte à Lettres">
+<!ENTITY archibald.apropos.text2 "Version : &archibald.numver;">
+<!ENTITY archibald.apropos.text3 "Publié le : &archibald.datever;">
+<!ENTITY archibald.numver "7.3">
+<!ENTITY archibald.datever "28/11/2019">
+
+
+<!ENTITY archibald.context.lib "Archiver...">
+<!ENTITY archibald.context.key "A">
+
+<!ENTITY archibald.titreoptionsdossiers "Traitement des dossiers">
+<!ENTITY archibald.boitealettres "Boîte à lettres :">
+<!ENTITY archibald.colnom "Liste des dossiers">
+<!ENTITY archibald.colmode "Mode">
+<!ENTITY archibalddlg.btvalider "Valider">
+<!ENTITY archibalddlg.btvalideralt "V">
+<!ENTITY archibalddlg.btannuler "Annuler">
+<!ENTITY archibalddlg.btannuleralt "A">
+
+<!ENTITY am-archibald.titre "Archivage">
+<!ENTITY am-archibald.desc "Paramétrage de l'archivage">
+<!ENTITY archibald.HierarchyButton "Options d'archivage…">
+<!ENTITY archibald.HierarchyButtonKey "O">
+
+<!ENTITY dlgconfirm.titre "&archibalddlg.titre;">
+<!ENTITY dlgconfirm.titredossier "Archivage d'un dossier">
+<!ENTITY dlgconfirm.ok "OUI">
+<!ENTITY dlgconfirm.no "NON">
+<!ENTITY dlgconfirm.libperiode "Messages de plus de : ">
+<!ENTITY dlgconfirm.libjours "jours">
+<!ENTITY dlgconfirm.libdate "Soit jusqu'au : ">
+
+<!ENTITY archibald.sousdossiers "Archiver les sous-dossiers">
