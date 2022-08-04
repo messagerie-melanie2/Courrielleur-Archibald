@@ -6,3 +6,5 @@ pref("archibald.modecopie", false);
 pref("archibald.dlgconfirm", true);
 //true: telechargement pour offline avant archivage
 pref("archibald.downloadforoffline", true);
+
+pref("archibald.trace", false);
