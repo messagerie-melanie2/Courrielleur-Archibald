@@ -1,5 +1,6 @@
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource:///modules/mailServices.js");
+ChromeUtils.import("resource:///modules/pacomeUtils.jsm");
 
 
 //nombre de jours pour l'archivage
@@ -97,10 +98,10 @@ ArchibaldParamsCompte.prototype={
       return true;
     return false;
   },
-  
+
   //retourne true si balp
   isBalp: function() {
-    if (-1!=this.uid.indexOf(".-."))
+    if (-1!=this.uid.indexOf(MCE_SEP_BOITE))
       return true;
     return false;
   },
@@ -116,18 +117,18 @@ ArchibaldParamsCompte.prototype={
 //retourne true dans le cas d'une bali
 //se base sur .-. et != de nobody
 function uidIsBali(uid){
-  
+
   if ("nobody"==uid)
     return false;
-  if (-1==uid.indexOf(".-."))
+  if (-1==uid.indexOf(MCE_SEP_BOITE))
     return true;
   return false;
 }
 
 //retourne true si balp
 function uidIsBalp(uid){
-  
-  if (-1!=uid.indexOf(".-."))
+
+  if (-1!=uid.indexOf(MCE_SEP_BOITE))
     return true;
   return false;
 }
