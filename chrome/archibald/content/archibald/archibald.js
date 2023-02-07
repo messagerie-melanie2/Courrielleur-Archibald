@@ -1,6 +1,5 @@
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource:///modules/mailServices.js");
-ChromeUtils.import("resource:///modules/pacomeUtils.jsm");
 
 
 //nombre de jours pour l'archivage
