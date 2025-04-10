@@ -1,19 +1,21 @@
 // --------------- SPACE TOOLBAR BUTTON ------
 async function createSpaceButton() {
   try {
-    const spaceName = "Archibald";
-    const defaultUrl = browser.runtime.getURL("content/archibald.html");
-    const buttonProperties = {
+    let spaceName = "Archibald";
+    let defaultUrl = browser.runtime.getURL("content/archibald.html");
+
+    let isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    let iconPrefix = isDark ? "dark" : "light";
+
+    let buttonProperties = {
       title: "Archivage de boîte à lettres",
       defaultIcons: {
-        "24": {
-          "light": "skin/images/archibald_logo_24_light.png",
-          "dark": "skin/images/archibald_logo_24_dark.png"
-        }
+        "18": "skin/images/archibald_logo_18_"+iconPrefix+".png",
+        "32": "skin/images/archibald_logo_32_"+iconPrefix+".png"
       }
     };
 
-    const space = await browser.spaces.create(spaceName, defaultUrl, buttonProperties);
+    let space = await browser.spaces.create(spaceName, defaultUrl, buttonProperties);
     console.log(`Archibald button created with space ID: ${space.id}`);
   } catch (error) {
     console.error("Error creating space:", error);
