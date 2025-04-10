@@ -1,0 +1,48 @@
+{
+  "manifest_version": 2,
+  "name": "Pauline",
+  "version": "1.0",
+  "description": "Extension de consultation des contacts ministeriels",
+  "applications": {
+    "gecko": {
+      "id": "pauline@developpement-durable.fr",
+      "strict_min_version": "102.0"
+    }
+  },
+  "compose_action": {
+    "default_title": "Annuaire",
+    "default_icon": {
+      "16": "skin/images/logo-16.png",
+      "32": "skin/images/logo-32.png"
+    }
+  },
+  "experiment_apis": {
+    "domapi": {
+      "schema": "./api/domapi/schema.json",
+      "parent" : {
+          "scopes": ["addon_parent"],
+          "paths": [["domapi"]],
+          "script": "./api/domapi/implementation.js"
+      }
+    }
+  },
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": true
+  },
+  "permissions": [
+    "tabs",
+    "notifications",
+    "storage",
+    "menus",
+    "compose"
+  ],
+  "icons": {
+    "32": "skin/images/logo-32.png"
+  },
+  "web_accessible_resources": [
+    "content/pauline.html",
+    "content/paulineHelpers.js",
+    "content/default/preferences/default_pref.json"
+  ]
+}
