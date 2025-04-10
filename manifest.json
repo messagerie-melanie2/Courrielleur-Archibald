@@ -1,19 +1,12 @@
 {
   "manifest_version": 2,
-  "name": "Pauline",
+  "name": "Archibald",
   "version": "1.0",
-  "description": "Extension de consultation des contacts ministeriels",
+  "description": "Extension d'archivage de boîtes.",
   "applications": {
     "gecko": {
-      "id": "pauline@developpement-durable.fr",
+      "id": "archibald@developpement-durable.fr",
       "strict_min_version": "102.0"
-    }
-  },
-  "compose_action": {
-    "default_title": "Annuaire",
-    "default_icon": {
-      "16": "skin/images/logo-16.png",
-      "32": "skin/images/logo-32.png"
     }
   },
   "experiment_apis": {
@@ -38,11 +31,11 @@
     "compose"
   ],
   "icons": {
-    "32": "skin/images/logo-32.png"
+    "32": "skin/images/archibald_logo_32.png"
   },
   "web_accessible_resources": [
-    "content/pauline.html",
-    "content/paulineHelpers.js",
+    "content/archibald.html",
+    "content/archibaldHelpers.js",
     "content/default/preferences/default_pref.json"
   ]
 }
