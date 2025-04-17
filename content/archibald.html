@@ -2,32 +2,44 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Archibald Popup</title>
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      width: 100%;
-      background-color: var(--arrowpanel-background, #f0f0f4);
-      color: var(--arrowpanel-color, #000);
-      font-family: sans-serif;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .popup {
-      padding: 20px 30px;
-      border-radius: 8px;
-      background-color: var(--arrowpanel-background, #fff);
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
-      font-size: 18px;
-      text-align: center;
-    }
-  </style>
+  <title>Archibald</title>
+  <link rel="stylesheet" type="text/css" href="../skin/theme.css">
 </head>
 <body>
-  <div class="popup">Hello world</div>
+    <div class="input-group">
+      <label for="mailbox">Archiver la boîte :</label>
+      <select id="mailbox" style="font-weight: bold; width: 100%; padding: 6px; font-size: 14px;">
+        <option>DEROUIN Ludovic – SG/DNUM/UNI/DETN/GMCD/PIAP</option>
+        <option>JEAN Dupont – SG/DNUM/UNI/DETN/GMCD/SECUR</option>
+        <option>MARIE Claire – SG/DNUM/UNI/DETN/DSI/ARCHIV</option>
+      </select>
+    </div>
+
+    <div class="input-group">
+      <label for="days">Archiver les messages de plus de :</label><br/>
+      <input type="number" id="days" value="90" min="0"> jours
+    </div>
+
+    <div class="input-group">
+      <label for="until">Soit jusqu'au :</label><br/>
+      <input type="date" id="until" value="2025-01-10">
+    </div>
+
+    <div class="buttons">
+      <button id="ok">Archiver</button>
+      <button id="cancel">Annuler</button>
+    </div>
+
+  <script>
+    document.getElementById('yes').addEventListener('click', () => {
+      const days = document.getElementById('days').value;
+      const until = document.getElementById('until').value;
+      console.log(`Archiver les messages de plus de ${days} jours (jusqu'au ${until})`);
+    });
+
+    document.getElementById('no').addEventListener('click', () => {
+      window.close();
+    });
+  </script>
 </body>
 </html>

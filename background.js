@@ -1,25 +1,21 @@
-// --------------- SPACE TOOLBAR BUTTON ------
-async function createSpaceButton() {
+// Toolbar Archibald button
+async function openArchibaldPopup() {
   try {
-    let spaceName = "Archibald";
-    let defaultUrl = browser.runtime.getURL("content/archibald.html");
+    const popupUrl = browser.runtime.getURL("content/archibald.html");
 
-    let isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    let iconPrefix = isDark ? "dark" : "light";
+    await browser.windows.create({
+      url: popupUrl,
+      type: "popup",
+      width: 500,
+      height: 300
+    });
 
-    let buttonProperties = {
-      title: "Archivage de boîte à lettres",
-      defaultIcons: {
-        "18": "skin/images/archibald_logo_18_"+iconPrefix+".png",
-        "32": "skin/images/archibald_logo_32_"+iconPrefix+".png"
-      }
-    };
-
-    let space = await browser.spaces.create(spaceName, defaultUrl, buttonProperties);
-    console.log(`Archibald button created with space ID: ${space.id}`);
+    console.log("Archibald popup window opened.");
   } catch (error) {
-    console.error("Error creating space:", error);
+    console.error("Failed to open Archibald popup:", error);
   }
 }
-createSpaceButton();
-// -------------------------------------------
+
+// Set up the click handler for the toolbar button
+browser.browserAction.onClicked.addListener(openArchibaldPopup);
+// ----------------------------------------

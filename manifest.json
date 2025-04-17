@@ -23,12 +23,20 @@
     "scripts": ["background.js"],
     "persistent": true
   },
+  "browser_action": {
+    "default_title": "Archibald",
+    "default_icon": {
+      "18": "skin/images/archibald_logo_18_light.png",
+      "32": "skin/images/archibald_logo_32_light.png"
+    }
+  },
   "permissions": [
     "tabs",
     "notifications",
     "storage",
     "menus",
-    "compose"
+    "compose",
+    "windows"
   ],
   "icons": {
     "32": "skin/images/archibald_logo_32.png"
