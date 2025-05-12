@@ -48,7 +48,8 @@ body {
   .buttons {
     margin-top: 15px;
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
+    gap: 10px; /* Optional: adds space between buttons */
   }
 
   button {
@@ -69,6 +70,31 @@ body {
   }
   #ok:hover{
     background-color: #0060AC;
+  }
+
+  .folder-item input[type="checkbox"] {
+    margin-right: 10px;
+    flex-shrink: 0;
+  }
+  .folder-list {
+    margin-top: 10px;
+    padding-left: 10px;
+  }
+  .indent {
+    padding-left: 16px;
+  }
+  .folder-item {
+    display: flex;
+    align-items: center;
+  }
+  .folder-item input[type="checkbox"] {
+    margin-right: 8px;
+    width: auto;        /* Don't stretch */
+    flex: 0 0 auto;     /* Prevent flex from stretching the checkbox */
+  }
+  .folder-item .label {
+    padding-left: 4px;
+    flex: 1;            /* Let the label grow to fill remaining space */
   }
 
   /* Dark theme styles */

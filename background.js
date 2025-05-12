@@ -7,7 +7,7 @@ async function openArchibaldPopup() {
       url: popupUrl,
       type: "popup",
       width: 500,
-      height: 300
+      height: 280
     });
 
     console.log("Archibald popup window opened.");

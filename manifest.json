@@ -36,7 +36,9 @@
     "storage",
     "menus",
     "compose",
-    "windows"
+    "accountsRead",
+    "messagesRead",
+    "messagesMove"
   ],
   "icons": {
     "32": "skin/images/archibald_logo_32.png"

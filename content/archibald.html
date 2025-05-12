@@ -4,15 +4,15 @@
   <meta charset="UTF-8">
   <title>Archibald</title>
   <link rel="stylesheet" type="text/css" href="../skin/theme.css">
+  <script src="archibald.js" defer></script>
 </head>
 <body>
     <div class="input-group">
-      <label for="mailbox">Archiver la boîte :</label>
-      <select id="mailbox" style="font-weight: bold; width: 100%; padding: 6px; font-size: 14px;">
-        <option>DEROUIN Ludovic – SG/DNUM/UNI/DETN/GMCD/PIAP</option>
-        <option>JEAN Dupont – SG/DNUM/UNI/DETN/GMCD/SECUR</option>
-        <option>MARIE Claire – SG/DNUM/UNI/DETN/DSI/ARCHIV</option>
-      </select>
+      <label for="mailboxDropdown">Archiver la boîte :</label>
+      <div style="display: flex; gap: 6px; align-items: center;">
+        <select id="mailboxDropdown" style="flex: 1; font-weight: bold; padding: 6px; font-size: 14px;"></select>
+        <button id="folders" title="Dossiers à archiver." style="height: 32px; padding: 0 10px;">Dossiers</button>
+      </div>
     </div>
 
     <div class="input-group">
@@ -29,17 +29,5 @@
       <button id="ok">Archiver</button>
       <button id="cancel">Annuler</button>
     </div>
-
-  <script>
-    document.getElementById('yes').addEventListener('click', () => {
-      const days = document.getElementById('days').value;
-      const until = document.getElementById('until').value;
-      console.log(`Archiver les messages de plus de ${days} jours (jusqu'au ${until})`);
-    });
-
-    document.getElementById('no').addEventListener('click', () => {
-      window.close();
-    });
-  </script>
 </body>
 </html>
