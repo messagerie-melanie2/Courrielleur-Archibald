@@ -1,16 +1,32 @@
+function getAccountIdFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("accountId");
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
-    const folderListContainer = document.getElementById("folderList");
-    const accountTitle = document.getElementById("accountName");
+  const folderListContainer = document.getElementById("folderList");
+  const accountTitle = document.getElementById("accountName");
+  const accountId = getAccountIdFromUrl();
 
-    const accounts = await browser.accounts.list();
+  if (!accountId) {
+      console.error("Missing accountId in URL");
+      return;
+  }
 
-    const account = accounts[0];
-    accountTitle.textContent = `Compte : ${account.name}`;
+  const accounts = await browser.accounts.list();
+  const account = accounts.find(acc => acc.id === accountId);
 
-    // Start populating from root folders
-    account.folders.forEach(folder => {
-        renderFolder(folder, folderListContainer, 0);
-    });
+  if (!account) {
+      console.error(`No account found for id ${accountId}`);
+      return;
+  }
+
+  accountTitle.textContent = `Compte : ${account.name}`;
+
+  // Start populating from root folders
+  account.folders.forEach(folder => {
+      renderFolder(folder, folderListContainer, 0);
+  });
 });
 
 function renderFolder(folder, container, level) {
@@ -41,24 +57,49 @@ function renderFolder(folder, container, level) {
 }
 
 // Ok button
-document.getElementById("ok").addEventListener("click", () => {
+document.getElementById("ok").addEventListener("click", async () => {
+  try {
     const checkboxes = document.querySelectorAll(".folder-item input[type='checkbox']");
     const selectedFolders = [];
 
-    checkboxes.forEach(checkbox => {
+    for (const checkbox of checkboxes) {
       if (checkbox.checked) {
         const folderData = JSON.parse(checkbox.dataset.folder);
-        selectedFolders.push(folderData);
+        selectedFolders.push({
+          name: folderData.name,
+          path: folderData.path,
+          accountId: folderData.accountId
+        });
       }
+    }
+
+    if (selectedFolders.length === 0) {
+      alert("Veuillez sélectionner au moins un dossier.");
+      return;
+    }
+
+    // Get accountId from dataset or stored value
+    const accountId = getAccountIdFromUrl();
+    if (!accountId) {
+      console.error("Account ID not found in params.");
+      return;
+    }
+
+    const filePath = `defaults/folderSelections-${accountId}.json`;
+
+    await browser.runtime.sendMessage({
+      type: "writeFile",
+      path: filePath,
+      content: JSON.stringify(selectedFolders, null, 2)
     });
 
-    if (window.opener) {
-      window.opener.postMessage({ type: "selectedFolders", folders: selectedFolders }, "*");
-      window.close();
-    } else {
-      console.error("No opener window found.");
-    }
-  });
+    const win = await browser.windows.getCurrent();
+    await browser.windows.remove(win.id);
+
+  } catch (error) {
+    console.error("Error while saving folders :", error);
+  }
+});
 
 // Cancel button
 document.getElementById("cancel").addEventListener("click", async () => {
