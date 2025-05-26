@@ -36,8 +36,11 @@ function renderFolder(folder, container, level) {
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = true;
-    checkbox.dataset.accountId = folder.accountId;
-    checkbox.dataset.folderPath = folder.path;
+    checkbox.dataset.folder = JSON.stringify({
+        accountId: folder.accountId,
+        path: folder.path,
+        name: folder.name
+    });
 
     const labelContainer = document.createElement("div");
     labelContainer.textContent = folder.name;
@@ -51,7 +54,7 @@ function renderFolder(folder, container, level) {
     // Recursively render subfolders
     if (folder.subFolders && folder.subFolders.length > 0) {
         folder.subFolders.forEach(subFolder => {
-        renderFolder(subFolder, container, level + 1);
+            renderFolder(subFolder, container, level + 1);
         });
     }
 }
@@ -87,10 +90,9 @@ document.getElementById("ok").addEventListener("click", async () => {
 
     const filePath = `defaults/folderSelections-${accountId}.json`;
 
-    await browser.runtime.sendMessage({
-      type: "writeFile",
-      path: filePath,
-      content: JSON.stringify(selectedFolders, null, 2)
+    console.log("Storing folders: "+selectedFolders.map( function( folder ){ return folder.name; }));
+    await browser.storage.local.set({
+      [accountId]: selectedFolders
     });
 
     const win = await browser.windows.getCurrent();

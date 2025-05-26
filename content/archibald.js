@@ -2,8 +2,7 @@ const WIDTH = 500;
 const HEIGHT = 280;
 
 // Prevent user from resizing the window
-function enforceFixedSizeOnResize()
-{
+function enforceFixedSizeOnResize() {
     window.addEventListener("resize", async () => {
       const win = await browser.windows.getCurrent();
       if (win.width !== WIDTH || win.height !== HEIGHT) {
@@ -26,20 +25,23 @@ document.addEventListener("DOMContentLoaded", enforceFixedSizeOnResize);
 
 // List all available accounts
 async function populateInboxDropdown() {
-    const dropdown = document.getElementById("mailboxDropdown");
+  const dropdown = document.getElementById("mailboxDropdown");
+  const accounts = await browser.accounts.list();
 
-    const accounts = await browser.accounts.list();
-
-    for (const account of accounts) {
-        for (const folder of account.folders) {
-          if (folder.type === "inbox") {
-              const option = document.createElement("option");
-              option.value = JSON.stringify(folder);
-              option.textContent = `${account.name} – ${folder.name}`;
-              dropdown.appendChild(option);
-          }
-        }
+  for (const account of accounts) {
+    for (const folder of account.folders) {
+      if (folder.type === "inbox") {
+        const option = document.createElement("option");
+        option.value = JSON.stringify({
+          accountId: account.id,
+          folderPath: folder.path
+        });
+        option.textContent = `${account.name} – ${folder.name}`;
+        dropdown.appendChild(option);
+      }
     }
+  }
+  loadFolderListForSelectedAccount();
 }
 document.addEventListener("DOMContentLoaded", populateInboxDropdown);
 
@@ -47,7 +49,6 @@ document.addEventListener("DOMContentLoaded", populateInboxDropdown);
 document.addEventListener("DOMContentLoaded", () => {
   const daysInput = document.getElementById("days");
   const dateInput = document.getElementById("until");
-  const mailbox = document.getElementById("mailboxDropdown");
 
   // Update date when days change
   daysInput.addEventListener("input", () => {
@@ -71,75 +72,64 @@ document.addEventListener("DOMContentLoaded", () => {
       daysInput.value = diffDays;
     }
   });
-
-  // Load folder list for the selected account (create it if necessary)
-  mailbox.addEventListener("change", async (event) => {
-    const selectedOption = event.target.selectedOptions[0];
-    const accountData = JSON.parse(selectedOption.value);
-    const accountId = accountData.id;
-
-    const filePath = "defaults/"+accountId+".json";
-
-    try {
-      // Try to read the stored folder list
-      let storedData = {};
-      try {
-        const fileContent = await browser.runtime.sendMessage({
-          type: "readFile",
-          path: filePath
-        });
-        storedData = JSON.parse(fileContent);
-      } catch (err) {
-        console.log("No existing "+accountId+".json found, will create new.");
-      }
-
-      if (storedData[accountId]) {
-        console.log(`Using stored folder list for account ${accountId}.`);
-      } else {
-        console.log(`No folder list found for ${accountId}, generating default list.`);
-        await saveDefaultFoldersForAccount(accountId);
-      }
-    } catch (err) {
-      console.error("Error handling account selection:", err);
-    }
-  });
 });
 
-// TODO Finish and test archive process
-async function archiveMessagesBeforeDate(folder, cutoffDate) {
-    // Convert Date object to ISO string (UTC midnight)
-    const cutoffTimestamp = cutoffDate.getTime();
+// Load folder list for the selected account (create it if necessary)
+async function loadFolderListForSelectedAccount() {
+  console.log("Loading folder list for selected account.");
+  const selectedMailbox = document.getElementById("mailboxDropdown").selectedOptions[0];
+  const { accountId, folderPath } = JSON.parse(selectedMailbox.value);
 
-    // Get all messages in the folder
-    const messages = await browser.messages.list(folder);
+  try {
+    const storedData = await browser.storage.local.get(accountId);
 
-    // Filter messages older than the given date
-    const messagesToArchive = messages.messages.filter(msg => {
-      const msgDate = new Date(msg.date).getTime();
-      return msgDate < cutoffTimestamp;
-    });
-
-    // Archive the filtered messages
-    for (const msg of messagesToArchive) {
-      await browser.messages.archive([msg.id]);
+    if (storedData[accountId]) {
+      console.log(`Using stored folder list for account ${accountId}.`);
+    } else {
+      console.log(`No folder list found for ${accountId}, generating default list.`);
+      await setDefaultFoldersForAccount(accountId);
     }
+  } catch (err) {
+    console.error("Error handling account selection:", err);
+  }
+}
+// On load - This is already done when populating the dropbox
+// document.addEventListener("DOMContentLoaded", async () => { await loadFolderListForSelectedAccount(); });
+// On change
+document.getElementById("mailboxDropdown").addEventListener("change", loadFolderListForSelectedAccount);
 
-    console.log(`${messagesToArchive.length} messages archived.`);
+// Archive folder messages before cutoffDate
+async function archiveMessagesBeforeDate(folder, cutoffDate) {
+  const cutoffTimestamp = cutoffDate.getTime();
+  const folderId = { accountId: folder.accountId, path: folder.path };
+
+  const messages = await browser.messages.list(folderId);
+
+  const messagesToArchive = messages.messages.filter(msg => {
+    const msgDate = new Date(msg.date).getTime();
+    return msgDate < cutoffTimestamp;
+  });
+
+  console.log("Archiving folder: " + folder.name + " - before: " + cutoffDate);
+  for (const msg of messagesToArchive) {
+    await browser.messages.archive([msg.id]);
+  }
+
+  console.log(`${messagesToArchive.length} messages archived from ${folder.name}.`);
 }
 
 // Ok button
 document.getElementById("ok").addEventListener("click", async () => {
-  console.log("Starting Archiving");
+  const mailboxDropdown = document.getElementById("mailboxDropdown");
+  const selectedMailbox = mailboxDropdown.options[mailboxDropdown.selectedIndex];
+  const accountId = JSON.parse(selectedMailbox.value).accountId;
+  const storedFolders = await browser.storage.local.get(accountId);
+  const storedFoldersForSelectedAccount = storedFolders[accountId];
+  const selectedDate = document.getElementById("until");
 
-  const selectedOption = dropdown.selectedOptions[0];
-  const accountId = selectedOption.dataset.accountId;
-  const path = selectedOption.dataset.path;
-
-  // Find the folder again
-  const account = (await browser.accounts.list()).find(acc => acc.id === accountId);
-  const folder = findFolderByPath(account.folders, path);
-
-  await archiveMessagesBeforeDate(document.getElementById("mailboxDropdown").value, new Date((document.getElementById("until").value)));
+  for (const folder of storedFoldersForSelectedAccount) {
+    await archiveMessagesBeforeDate(folder, new Date(selectedDate.value));
+  }
 });
 
 // Cancel button - simply closes the window, TODO: cancel archiving ?
@@ -149,8 +139,9 @@ document.getElementById("cancel").addEventListener("click", async () => {
     await browser.windows.remove(win.id);
 });
 
-async function saveDefaultFoldersForAccount(accountId) {
+async function setDefaultFoldersForAccount(accountId) {
   const account = await browser.accounts.get(accountId);
+  console.log("Setting default folders for account: "+account);
   const folders = await browser.folders.getSubFolders(account);
 
   // Flatten folders recursively
@@ -169,10 +160,8 @@ async function saveDefaultFoldersForAccount(accountId) {
 
   const filePath = "defaults/"+ accountId +".json";
 
-  await browser.runtime.sendMessage({
-    type: "writeFile",
-    path: filePath,
-    content: JSON.stringify(allFolders, null, 2)
+  await browser.storage.local.set({
+    [accountId]: selectedFolders
   });
 
   console.log("Saved default folders for account: "+accountId);
