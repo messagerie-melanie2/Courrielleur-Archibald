@@ -6,6 +6,10 @@
   <link rel="stylesheet" type="text/css" href="../skin/theme.css">
   <script src="archibald.js" defer></script>
 </head>
+<div id="progressContainer" style="display: none; margin-top: 20px;">
+  <label for="progressBar">Progression de l'archivage :</label>
+  <progress id="progressBar" value="0" max="100" style="width: 100%; height: 20px;"></progress>
+</div>
 <body>
     <div class="input-group">
       <label for="mailboxDropdown">Archiver la boîte :</label>
@@ -17,7 +21,7 @@
 
     <div class="input-group">
       <label for="days">Archiver les messages de plus de :</label><br/>
-      <input type="number" id="days" value="90" min="0"> jours
+      <input type="number" id="days" value="365" min="0"> jours
     </div>
 
     <div class="input-group">

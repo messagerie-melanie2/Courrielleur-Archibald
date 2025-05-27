@@ -1,3 +1,28 @@
+let WIDTH = 500;
+let HEIGHT = 500;
+
+// Prevent user from resizing the window
+function enforceFixedSizeOnResize() {
+    window.addEventListener("resize", async () => {
+      const win = await browser.windows.getCurrent();
+      if (win.width !== WIDTH || win.height !== HEIGHT) {
+        await browser.windows.update(win.id, {
+          width: WIDTH,
+          height: HEIGHT
+        });
+      }
+    });
+
+    // Set the initial size on load
+    browser.windows.getCurrent().then(win => {
+      browser.windows.update(win.id, {
+        width: WIDTH,
+        height: HEIGHT
+      });
+    });
+}
+document.addEventListener("DOMContentLoaded", enforceFixedSizeOnResize);
+
 function getAccountIdFromUrl() {
   const params = new URLSearchParams(window.location.search);
   return params.get("accountId");
@@ -25,7 +50,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Start populating from root folders
   account.folders.forEach(folder => {
-      renderFolder(folder, folderListContainer, 0);
+      if(folder.name != "Archives")
+        renderFolder(folder, folderListContainer, 0);
   });
 });
 
@@ -37,9 +63,10 @@ function renderFolder(folder, container, level) {
     checkbox.type = "checkbox";
     checkbox.checked = true;
     checkbox.dataset.folder = JSON.stringify({
-        accountId: folder.accountId,
+        name: folder.name,
         path: folder.path,
-        name: folder.name
+        id: folder.id,
+        accountId: folder.accountId
     });
 
     const labelContainer = document.createElement("div");
@@ -71,6 +98,7 @@ document.getElementById("ok").addEventListener("click", async () => {
         selectedFolders.push({
           name: folderData.name,
           path: folderData.path,
+          id: folderData.id,
           accountId: folderData.accountId
         });
       }

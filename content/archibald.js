@@ -1,5 +1,6 @@
-const WIDTH = 500;
-const HEIGHT = 280;
+let WIDTH = 500;
+let HEIGHT = 280;
+let archiveCount = 0;
 
 // Prevent user from resizing the window
 function enforceFixedSizeOnResize() {
@@ -72,6 +73,12 @@ document.addEventListener("DOMContentLoaded", () => {
       daysInput.value = diffDays;
     }
   });
+
+  // Default value to one year from current date
+  const oneYearFromNow = new Date();
+  oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() - 1);
+  const formattedDate = oneYearFromNow.toISOString().split('T')[0];
+  dateInput.value = formattedDate;
 });
 
 // Load folder list for the selected account (create it if necessary)
@@ -100,19 +107,20 @@ document.getElementById("mailboxDropdown").addEventListener("change", loadFolder
 
 // Archive folder messages before cutoffDate
 async function archiveMessagesBeforeDate(folder, cutoffDate) {
+  console.log("Archiving folder: " + folder.name + " - before: " + cutoffDate);
+
   const cutoffTimestamp = cutoffDate.getTime();
-  const folderId = { accountId: folder.accountId, path: folder.path };
 
-  const messages = await browser.messages.list(folderId);
-
+  console.log("Calling messages.list with folderId: " + folder.id);
+  const messages = await browser.messages.list(folder.id);
   const messagesToArchive = messages.messages.filter(msg => {
     const msgDate = new Date(msg.date).getTime();
     return msgDate < cutoffTimestamp;
   });
 
-  console.log("Archiving folder: " + folder.name + " - before: " + cutoffDate);
   for (const msg of messagesToArchive) {
     await browser.messages.archive([msg.id]);
+    archiveCount++;
   }
 
   console.log(`${messagesToArchive.length} messages archived from ${folder.name}.`);
@@ -120,17 +128,81 @@ async function archiveMessagesBeforeDate(folder, cutoffDate) {
 
 // Ok button
 document.getElementById("ok").addEventListener("click", async () => {
+  // Selected Account
   const mailboxDropdown = document.getElementById("mailboxDropdown");
   const selectedMailbox = mailboxDropdown.options[mailboxDropdown.selectedIndex];
   const accountId = JSON.parse(selectedMailbox.value).accountId;
+
+  // Selected Folders and date
   const storedFolders = await browser.storage.local.get(accountId);
   const storedFoldersForSelectedAccount = storedFolders[accountId];
   const selectedDate = document.getElementById("until");
 
-  for (const folder of storedFoldersForSelectedAccount) {
-    await archiveMessagesBeforeDate(folder, new Date(selectedDate.value));
+  // Prepare window style
+  const progressBar = document.getElementById("progressBar");
+  readyArchibaldWindow();
+
+  try {
+    let i = 0;
+    for (const folder of storedFoldersForSelectedAccount) {
+      await archiveMessagesBeforeDate(folder, new Date(selectedDate.value));
+
+      // Update progress bar
+      const progress = Math.round(((i + 1) / storedFoldersForSelectedAccount.length) * 100);
+      progressBar.value = progress;
+      i++;
+    }
   }
+  catch (error) {
+    console.error("An error occurred: "+error.message);
+  }
+
+  // Reset window style
+  resetArchibaldWindow();
+  setTimeout(() => {
+    alert("Archivage terminé ! " + archiveCount + " messages déplacés.");
+    archiveCount = 0;
+  }, 200);
 });
+
+// Prepare window for archiving
+function readyArchibaldWindow()
+{
+  // Resize to accomodate progress bar
+  HEIGHT = HEIGHT+60;
+  browser.windows.getCurrent().then(win => {
+    browser.windows.update(win.id, {
+      width: WIDTH,
+      height: HEIGHT
+    });
+  });
+
+  // Show Progress Bar & Disable buttons
+  const progressContainer = document.getElementById("progressContainer");
+  const progressBar = document.getElementById("progressBar");
+  progressContainer.style.display = "block";
+  document.getElementById("ok").disabled = true;
+  document.getElementById("cancel").disabled = true;
+}
+
+// Reset window state
+function resetArchibaldWindow()
+{
+  // Hide Progress Bar and enable buttons
+  document.getElementById("progressContainer").style.display = "none";
+  document.getElementById("progressBar").value = 0;
+  document.getElementById("ok").disabled = false;
+  document.getElementById("cancel").disabled = false;
+
+  // Resize to hide progressbar
+  HEIGHT = HEIGHT-60;
+  browser.windows.getCurrent().then(win => {
+    browser.windows.update(win.id, {
+      width: WIDTH,
+      height: HEIGHT
+    });
+  });
+}
 
 // Cancel button - simply closes the window, TODO: cancel archiving ?
 document.getElementById("cancel").addEventListener("click", async () => {
@@ -151,9 +223,11 @@ async function setDefaultFoldersForAccount(accountId) {
       allFolders.push({
         name: folder.name,
         path: folder.path,
+        id: folder.id,
         accountId: folder.accountId
       });
       if (folder.subFolders?.length) collect(folder.subFolders);
+      console.log(folder.id);
     }
   }
   collect(folders);
@@ -172,12 +246,19 @@ document.getElementById("folders").addEventListener("click", async () => {
   const dropdown = document.getElementById("mailboxDropdown");
   const selectedOption = dropdown.options[dropdown.selectedIndex];
   const accountId = JSON.parse(selectedOption.value).accountId;
+  const width = 500;
+  const height = 500;
+
+  // Get the current screen dimensions
+  const screenInfo = await browser.windows.getCurrent();
+  const left = Math.round(screenInfo.left + (screenInfo.width - width) / 2);
+  const top = Math.round(screenInfo.top + (screenInfo.height - height) / 2);
 
   await browser.windows.create({
     url: `./archibaldFolders.html?accountId=${encodeURIComponent(accountId)}`,
     type: "popup",
-    width: 400,
-    height: 300
+    width: width,
+    height: height
   });
 });
 
@@ -185,7 +266,5 @@ window.addEventListener("message", (event) => {
   if (event.data?.type === "selectedFolders") {
     const selectedFolders = event.data.folders;
     console.log("Received folders:", selectedFolders);
-
-    // Do something with the selected folders
   }
 });
