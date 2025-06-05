@@ -32,6 +32,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const folderListContainer = document.getElementById("folderList");
   const accountTitle = document.getElementById("accountName");
   const accountId = getAccountIdFromUrl();
+  const storedData = await browser.storage.local.get(accountId);
 
   if (!accountId) {
       console.error("Missing accountId in URL");
@@ -50,18 +51,25 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Start populating from root folders
   account.folders.forEach(folder => {
-      if(folder.name != "Archives")
-        renderFolder(folder, folderListContainer, 0);
+      const blacklist = ["Archives", "Corbeille", "Indésirables", "Brouillons", "Modèles", "Éléments envoyés"];
+      if (!blacklist.includes(folder.name))
+        renderFolder(folder, folderListContainer, 0, storedData[accountId]);
   });
 });
 
-function renderFolder(folder, container, level) {
+function renderFolder(folder, container, level, storedFolders) {
     const item = document.createElement("div");
     item.className = "folder-item";
 
+    // Check folder by default
+    let checked = true;
+    // Check folders or not depending on the storedFolders if we have some
+    if (storedFolders)
+      checked = storedFolders.some(f => f.name === folder.name);
+
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
-    checkbox.checked = true;
+    checkbox.checked = checked;
     checkbox.dataset.folder = JSON.stringify({
         name: folder.name,
         path: folder.path,
@@ -81,7 +89,7 @@ function renderFolder(folder, container, level) {
     // Recursively render subfolders
     if (folder.subFolders && folder.subFolders.length > 0) {
         folder.subFolders.forEach(subFolder => {
-            renderFolder(subFolder, container, level + 1);
+            renderFolder(subFolder, container, level + 1, storedFolders);
         });
     }
 }

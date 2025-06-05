@@ -91,7 +91,8 @@ async function loadFolderListForSelectedAccount() {
     const storedData = await browser.storage.local.get(accountId);
 
     if (storedData[accountId]) {
-      console.log(`Using stored folder list for account ${accountId}.`);
+      const folderNames = storedData[accountId].map(f => f.name).join(", ");
+      console.log(`Using stored folder list for account ${accountId}: ${folderNames}`);
     } else {
       console.log(`No folder list found for ${accountId}, generating default list.`);
       await setDefaultFoldersForAccount(accountId);
@@ -102,7 +103,7 @@ async function loadFolderListForSelectedAccount() {
 }
 // On load - This is already done when populating the dropbox
 // document.addEventListener("DOMContentLoaded", async () => { await loadFolderListForSelectedAccount(); });
-// On change
+// On account combobox change
 document.getElementById("mailboxDropdown").addEventListener("change", loadFolderListForSelectedAccount);
 
 // Archive folder messages before cutoffDate
@@ -160,7 +161,10 @@ document.getElementById("ok").addEventListener("click", async () => {
   // Reset window style
   resetArchibaldWindow();
   setTimeout(() => {
-    alert("Archivage terminé ! " + archiveCount + " messages déplacés.");
+    if(archiveCount > 0)
+      alert("Archivage terminé ! " + archiveCount + " messages déplacés.");
+    else
+      alert("Aucun message à archiver.");
     archiveCount = 0;
   }, 200);
 });
@@ -220,14 +224,20 @@ async function setDefaultFoldersForAccount(accountId) {
   const allFolders = [];
   function collect(folderArray) {
     for (const folder of folderArray) {
-      allFolders.push({
-        name: folder.name,
-        path: folder.path,
-        id: folder.id,
-        accountId: folder.accountId
-      });
-      if (folder.subFolders?.length) collect(folder.subFolders);
-      console.log(folder.id);
+      const blacklist = ["Archives", "Corbeille", "Indésirables", "Brouillons", "Modèles", "Éléments envoyés"];
+      if (!blacklist.includes(folder.name))
+      {
+        allFolders.push({
+          name: folder.name,
+          path: folder.path,
+          id: folder.id,
+          accountId: folder.accountId
+        });
+        if (folder.subFolders?.length)
+          collect(folder.subFolders);
+        console.log(folder.id);
+      }
+
     }
   }
   collect(folders);
