@@ -1,5 +1,5 @@
 let WIDTH = 500;
-let HEIGHT = 280;
+let HEIGHT = 400;
 let archiveCount = 0;
 
 // Prevent user from resizing the window
@@ -270,6 +270,28 @@ document.getElementById("folders").addEventListener("click", async () => {
     width: width,
     height: height
   });
+});
+
+document.getElementById("downloadArchive").addEventListener("click", async () => {
+  try {
+    const content = "Voici vos messages archivés.\n..."; // replace with real data
+    const blob = new Blob([content], { type: "text/plain" });
+
+    const url = URL.createObjectURL(blob);
+
+    await browser.downloads.download({
+      url,
+      filename: "archive/archibald-export.txt", // Can include subfolder suggestion
+      saveAs: true // Prompts user for location
+    });
+
+    // Clean up URL after short delay
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+  } catch (error) {
+    console.error("Download failed:", error);
+    alert("Échec de l’export de l’archive.");
+  }
 });
 
 window.addEventListener("message", (event) => {

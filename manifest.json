@@ -38,7 +38,8 @@
     "compose",
     "accountsRead",
     "messagesRead",
-    "messagesMove"
+    "messagesMove",
+    "downloads"
   ],
   "icons": {
     "32": "skin/images/archibald_logo_32.png"
