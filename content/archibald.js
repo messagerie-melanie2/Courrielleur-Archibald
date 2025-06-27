@@ -106,25 +106,111 @@ async function loadFolderListForSelectedAccount() {
 // On account combobox change
 document.getElementById("mailboxDropdown").addEventListener("change", loadFolderListForSelectedAccount);
 
+
+// Custom zip archive logic
+async function downloadAsZip(folders, cutoffDate) {
+  const cutoffTimestamp = cutoffDate.getTime();
+  const zip = new JSZip();
+  let archiveCount = 0;
+
+  for (const folder of folders) {
+    const messages = await browser.messages.list(folder.id);
+    const messagesToArchive = messages.messages.filter(msg => {
+      return new Date(msg.date).getTime() < cutoffTimestamp;
+    });
+
+    for (const msg of messagesToArchive) {
+      const msgDate = new Date(msg.date);
+      const year = msgDate.getFullYear().toString();
+
+      const full = await browser.messages.getFull(msg.id);
+      const raw = full.raw;
+      const subject = msg.subject || "message";
+      const filename = `${sanitizeFilename(subject)} - ${msgDate.toISOString().split("T")[0]}.eml`;
+
+      zip.folder(year).file(filename, raw);
+      archiveCount++;
+    }
+  }
+
+  // After all folders processed: save ZIP
+  const zipBlob = await zip.generateAsync({ type: "blob" });
+  const url = URL.createObjectURL(zipBlob);
+
+  await browser.downloads.download({
+    url,
+    filename: "Archibald_Archive.zip",
+    saveAs: true
+  });
+
+  URL.revokeObjectURL(url);
+  console.log(`${archiveCount} messages exported in one archive.`);
+}
+
+document.getElementById("folderPicker").addEventListener("click", async () => {
+  // TODO
+  const folderPath = await browser.fileIO.chooseFolder();
+  console.log(folderPath);
+});
+
+// Archive messages as .eml files in year-based subfolders inside basePath
+async function localyArchiveMessagesBeforeDate(folder, cutoffDate, basePath) {
+  // TODO manage to use fileIO experimental
+}
+// TODO
+function createLocalFolder(folderName) {
+  let accountManager = Cc["@mozilla.org/messenger/account-manager;1"].getService(Ci.nsIMsgAccountManager);
+  let localFoldersAccount = accountManager.localFoldersAccount;
+  let rootFolder = localFoldersAccount.incomingServer.rootFolder;
+
+  rootFolder.createSubfolder(folderName, null);
+
+  let newFolder = rootFolder.getChildNamed(folderName);
+  console.log("Created folder:", newFolder.prettyName);
+}
+
+// TODO We need to create a symlink beetween thunderbird local storage and the chosen folder locations
+async function createSymlink() {
+  const profileLocalFoldersPath = "C:\\Users\\<YourUser>\\AppData\\Roaming\\Thunderbird\\Profiles\\<profile>.default\\Mail\\Local Folders\\tmp";
+  const targetPath = "C:\\tmp";
+
+  try {
+    await OS.File.symlink(targetPath, profileLocalFoldersPath);
+    console.log("Symlink created successfully");
+  } catch (e) {
+    console.error("Failed to create symlink:", e);
+  }
+}
+
+
 // Archive folder messages before cutoffDate
 async function archiveMessagesBeforeDate(folder, cutoffDate) {
   console.log("Archiving folder: " + folder.name + " - before: " + cutoffDate);
 
   const cutoffTimestamp = cutoffDate.getTime();
-
-  console.log("Calling messages.list with folderId: " + folder.id);
   const messages = await browser.messages.list(folder.id);
   const messagesToArchive = messages.messages.filter(msg => {
     const msgDate = new Date(msg.date).getTime();
     return msgDate < cutoffTimestamp;
   });
 
+  let archiveCount = 0;
+  // Call thunderbird archiving logic
   for (const msg of messagesToArchive) {
     await browser.messages.archive([msg.id]);
     archiveCount++;
   }
 
-  console.log(`${messagesToArchive.length} messages archived from ${folder.name}.`);
+  console.log(`${archiveCount} messages archived from ${folder.name}.`);
+}
+
+// Cleanup message name to store localy
+function sanitizeFilename(name) {
+  return name.replace(/[\\/:*?"<>|]/g, "_").substring(0, 100);
+}
+
+async function getOrCreateSubfolder(baseDirHandle, name) {
+  return await baseDirHandle.getDirectoryHandle(name, { create: true });
 }
 
 // Ok button
@@ -144,14 +230,35 @@ document.getElementById("ok").addEventListener("click", async () => {
   readyArchibaldWindow();
 
   try {
-    let i = 0;
-    for (const folder of storedFoldersForSelectedAccount) {
-      await archiveMessagesBeforeDate(folder, new Date(selectedDate.value));
+    // TODO use checkbox to use local archive logic
+    if(true)
+    {
+      // Simply download a zip folder
+      //downloadAsZip(storedFoldersForSelectedAccount, new Date(selectedDate.value));
 
-      // Update progress bar
-      const progress = Math.round(((i + 1) / storedFoldersForSelectedAccount.length) * 100);
-      progressBar.value = progress;
-      i++;
+      // Localy archive at the give location
+      let i = 0;
+      for (const folder of storedFoldersForSelectedAccount) {
+        await localyArchiveMessagesBeforeDate(folder, new Date(selectedDate.value));
+
+        // Update progress bar
+        const progress = Math.round(((i + 1) / storedFoldersForSelectedAccount.length) * 100);
+        progressBar.value = progress;
+        i++;
+      }
+    }
+    else
+    {
+      // Archive using Thunderbird default logic
+      let i = 0;
+      for (const folder of storedFoldersForSelectedAccount) {
+        await archiveMessagesBeforeDate(folder, new Date(selectedDate.value));
+
+        // Update progress bar
+        const progress = Math.round(((i + 1) / storedFoldersForSelectedAccount.length) * 100);
+        progressBar.value = progress;
+        i++;
+      }
     }
   }
   catch (error) {
@@ -221,13 +328,13 @@ async function setDefaultFoldersForAccount(accountId) {
   const folders = await browser.folders.getSubFolders(account);
 
   // Flatten folders recursively
-  const allFolders = [];
+  const selectedFolders = [];
   function collect(folderArray) {
     for (const folder of folderArray) {
       const blacklist = ["Archives", "Corbeille", "Indésirables", "Brouillons", "Modèles", "Éléments envoyés"];
       if (!blacklist.includes(folder.name))
       {
-        allFolders.push({
+        selectedFolders.push({
           name: folder.name,
           path: folder.path,
           id: folder.id,
@@ -270,28 +377,6 @@ document.getElementById("folders").addEventListener("click", async () => {
     width: width,
     height: height
   });
-});
-
-document.getElementById("downloadArchive").addEventListener("click", async () => {
-  try {
-    const content = "Voici vos messages archivés.\n..."; // replace with real data
-    const blob = new Blob([content], { type: "text/plain" });
-
-    const url = URL.createObjectURL(blob);
-
-    await browser.downloads.download({
-      url,
-      filename: "archive/archibald-export.txt", // Can include subfolder suggestion
-      saveAs: true // Prompts user for location
-    });
-
-    // Clean up URL after short delay
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-
-  } catch (error) {
-    console.error("Download failed:", error);
-    alert("Échec de l’export de l’archive.");
-  }
 });
 
 window.addEventListener("message", (event) => {

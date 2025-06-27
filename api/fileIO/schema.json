@@ -1,0 +1,24 @@
+[
+  {
+    "namespace": "fileIO",
+    "functions": [
+      {
+        "name": "createFile",
+        "type": "function",
+        "description": "Write content to a file",
+        "parameters": [
+          { "name": "path", "type": "string" },
+          { "name": "content", "type": "string" }
+        ],
+        "async": true
+      },
+      {
+        "name": "chooseFolder",
+        "type": "function",
+        "description": "Choose a local folder and return complete local path",
+        "parameters": [],
+        "async": true
+      }
+    ]
+  }
+]

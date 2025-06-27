@@ -10,12 +10,11 @@
     }
   },
   "experiment_apis": {
-    "domapi": {
-      "schema": "./api/domapi/schema.json",
-      "parent" : {
-          "scopes": ["addon_parent"],
-          "paths": [["domapi"]],
-          "script": "./api/domapi/implementation.js"
+    "fileIO": {
+      "schema": "./api/fileIO/schema.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "script": "./api/fileIO/implementation.js"
       }
     }
   },
