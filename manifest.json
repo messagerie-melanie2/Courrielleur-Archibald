@@ -1,22 +1,26 @@
 {
-  "manifest_version": 2,
+  "manifest_version": 3,
   "name": "Archibald",
   "version": "1.0",
   "description": "Extension d'archivage de boîtes.",
   "applications": {
-    "gecko": {
-      "id": "archibald@developpement-durable.fr",
-      "strict_min_version": "102.0"
-    }
-  },
+	  "gecko": {
+		"id": "my-extension@example.com"
+	  }
+	},
   "experiment_apis": {
     "fileIO": {
       "schema": "./api/fileIO/schema.json",
       "parent": {
+        "paths": [["fileIO"]],
         "scopes": ["addon_parent"],
         "script": "./api/fileIO/implementation.js"
       }
     }
+  },
+  "action": {
+    "default_title": "Choose folder",
+    "default_popup": "content/archibald.html"
   },
   "background": {
     "scripts": ["background.js"],
@@ -37,15 +41,19 @@
     "compose",
     "accountsRead",
     "messagesRead",
-    "messagesMove",
-    "downloads"
+    "messagesMove"
   ],
   "icons": {
     "32": "skin/images/archibald_logo_32.png"
   },
   "web_accessible_resources": [
-    "content/archibald.html",
-    "content/archibaldHelpers.js",
-    "content/default/preferences/default_pref.json"
-  ]
+  {
+    "resources": [
+      "content/archibald.html",
+      "content/archibaldHelpers.js",
+      "content/default/preferences/default_pref.json"
+    ],
+    "matches": ["<all_urls>"]
+  }
+]
 }

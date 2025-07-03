@@ -1,4 +1,4 @@
-// Toolbar Archibald button
+/*// Toolbar Archibald button
 async function openArchibaldPopup() {
   try {
     const popupUrl = browser.runtime.getURL("content/archibald.html");
@@ -35,4 +35,4 @@ async function writeHelloWorld() {
 
 // Call the function
 writeHelloWorld();
-// ----------------------------------------
+// ----------------------------------------*/

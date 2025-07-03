@@ -2,7 +2,7 @@ let WIDTH = 500;
 let HEIGHT = 400;
 let archiveCount = 0;
 
-// Prevent user from resizing the window
+/* Prevent user from resizing the window
 function enforceFixedSizeOnResize() {
     window.addEventListener("resize", async () => {
       const win = await browser.windows.getCurrent();
@@ -22,11 +22,11 @@ function enforceFixedSizeOnResize() {
       });
     });
 }
-document.addEventListener("DOMContentLoaded", enforceFixedSizeOnResize);
+document.addEventListener("DOMContentLoaded", enforceFixedSizeOnResize);*/
 
 // List all available accounts
 async function populateInboxDropdown() {
-  const dropdown = document.getElementById("mailboxDropdown");
+  /*const dropdown = document.getElementById("mailboxDropdown");
   const accounts = await browser.accounts.list();
 
   for (const account of accounts) {
@@ -42,9 +42,29 @@ async function populateInboxDropdown() {
       }
     }
   }
+  loadFolderListForSelectedAccount();*/
+
+  const dropdown = document.getElementById("mailboxDropdown");
+  dropdown.innerHTML = "";
+
+  const accounts = await browser.accounts.list();
+
+  for (const account of accounts) {
+    if(account.type == "imap")
+    {
+      const option = document.createElement("option");
+      option.value = JSON.stringify({
+        accountId: account.id
+      });
+      option.textContent = `${account.name}`;
+      dropdown.appendChild(option);
+    }
+  }
+
   loadFolderListForSelectedAccount();
 }
-document.addEventListener("DOMContentLoaded", populateInboxDropdown);
+//document.addEventListener("DOMContentLoaded", populateInboxDropdown);
+populateInboxDropdown();
 
 // Dynamicly adjust date and day counts
 document.addEventListener("DOMContentLoaded", () => {
@@ -85,7 +105,7 @@ document.addEventListener("DOMContentLoaded", () => {
 async function loadFolderListForSelectedAccount() {
   console.log("Loading folder list for selected account.");
   const selectedMailbox = document.getElementById("mailboxDropdown").selectedOptions[0];
-  const { accountId, folderPath } = JSON.parse(selectedMailbox.value);
+  const accountId = JSON.parse(selectedMailbox.value).accountId;
 
   try {
     const storedData = await browser.storage.local.get(accountId);
@@ -148,14 +168,22 @@ async function downloadAsZip(folders, cutoffDate) {
 }
 
 document.getElementById("folderPicker").addEventListener("click", async () => {
-  // TODO
-  const folderPath = await browser.fileIO.chooseFolder();
-  console.log(folderPath);
+  localyArchiveMessagesBeforeDate(null,null, null);
 });
 
 // Archive messages as .eml files in year-based subfolders inside basePath
 async function localyArchiveMessagesBeforeDate(folder, cutoffDate, basePath) {
   // TODO manage to use fileIO experimental
+  const accounts = await browser.accounts.list();
+  const localAccount = accounts.find(acct => acct.type === "local");
+
+  if (!localAccount) {
+    throw new Error("Local Folders account not found.");
+  }
+
+  console.log(localAccount);
+  console.log(localAccount.id);
+  await browser.fileIO.createFolder(localAccount.id, "toto");
 }
 // TODO
 function createLocalFolder(folderName) {
@@ -324,8 +352,8 @@ document.getElementById("cancel").addEventListener("click", async () => {
 
 async function setDefaultFoldersForAccount(accountId) {
   const account = await browser.accounts.get(accountId);
-  console.log("Setting default folders for account: "+account);
-  const folders = await browser.folders.getSubFolders(account);
+  console.log("Setting default folders for account: "+accountId);
+  const folders = await browser.folders.getSubFolders(accountId);
 
   // Flatten folders recursively
   const selectedFolders = [];

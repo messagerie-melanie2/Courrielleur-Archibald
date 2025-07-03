@@ -3,20 +3,13 @@
     "namespace": "fileIO",
     "functions": [
       {
-        "name": "createFile",
+        "name": "createFolder",
         "type": "function",
-        "description": "Write content to a file",
+        "description": "Write new local folder",
         "parameters": [
-          { "name": "path", "type": "string" },
-          { "name": "content", "type": "string" }
+          { "name": "accountId", "type": "string" },
+          { "name": "name", "type": "string" }
         ],
-        "async": true
-      },
-      {
-        "name": "chooseFolder",
-        "type": "function",
-        "description": "Choose a local folder and return complete local path",
-        "parameters": [],
         "async": true
       }
     ]

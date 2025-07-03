@@ -49,49 +49,50 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   accountTitle.textContent = `Compte : ${account.name}`;
 
+  console.log(account);
   // Start populating from root folders
-  account.folders.forEach(folder => {
-      const blacklist = ["Archives", "Corbeille", "Indésirables", "Brouillons", "Modèles", "Éléments envoyés"];
-      if (!blacklist.includes(folder.name))
-        renderFolder(folder, folderListContainer, 0, storedData[accountId]);
-  });
+  const folders = await browser.folders.getSubFolders(accountId);
+  // Do not render some default folders
+  const blacklist = ["Archives", "Corbeille", "Indésirables", "Brouillons", "Modèles", "Éléments envoyés"];
+  for (const folder of folders) {
+    if (!blacklist.includes(folder.name)) {
+      await renderFolder(folder, folderListContainer, 0, storedData[accountId]);
+    }
+  }
 });
 
-function renderFolder(folder, container, level, storedFolders) {
-    const item = document.createElement("div");
-    item.className = "folder-item";
+async function renderFolder(folder, container, level, storedFolders) {
+  const item = document.createElement("div");
+  item.className = "folder-item";
 
-    // Check folder by default
-    let checked = true;
-    // Check folders or not depending on the storedFolders if we have some
-    if (storedFolders)
-      checked = storedFolders.some(f => f.name === folder.name);
+  let checked = true;
+  if (storedFolders)
+    checked = storedFolders.some(f => f.name === folder.name);
 
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = checked;
-    checkbox.dataset.folder = JSON.stringify({
-        name: folder.name,
-        path: folder.path,
-        id: folder.id,
-        accountId: folder.accountId
-    });
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.checked = checked;
+  checkbox.dataset.folder = JSON.stringify({
+    name: folder.name,
+    path: folder.path,
+    id: folder.id,
+    accountId: folder.accountId
+  });
 
-    const labelContainer = document.createElement("div");
-    labelContainer.textContent = folder.name;
-    labelContainer.style.paddingLeft = `${level * 20}px`; // Indent based on level
-    labelContainer.style.flex = "1";
+  const labelContainer = document.createElement("div");
+  labelContainer.textContent = folder.name;
+  labelContainer.style.paddingLeft = `${level * 20}px`;
+  labelContainer.style.flex = "1";
 
-    item.appendChild(checkbox);
-    item.appendChild(labelContainer);
-    container.appendChild(item);
+  item.appendChild(checkbox);
+  item.appendChild(labelContainer);
+  container.appendChild(item);
 
-    // Recursively render subfolders
-    if (folder.subFolders && folder.subFolders.length > 0) {
-        folder.subFolders.forEach(subFolder => {
-            renderFolder(subFolder, container, level + 1, storedFolders);
-        });
-    }
+  // Dynamically fetch and render subfolders
+  const subFolders = await browser.folders.getSubFolders(folder.id);
+  for (const sub of subFolders) {
+    await renderFolder(sub, container, level + 1, storedFolders);
+  }
 }
 
 // Ok button
