@@ -3,7 +3,7 @@
     "namespace": "fileIO",
     "functions": [
       {
-        "name": "createFolder",
+        "name": "createArchiveLocalFolder",
         "type": "function",
         "description": "Write new local folder",
         "parameters": [

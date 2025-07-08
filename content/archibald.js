@@ -2,8 +2,8 @@ let WIDTH = 500;
 let HEIGHT = 400;
 let archiveCount = 0;
 
-/* Prevent user from resizing the window
-function enforceFixedSizeOnResize() {
+// Prevent user from resizing the window
+/*function enforceFixedSizeOnResize() {
     window.addEventListener("resize", async () => {
       const win = await browser.windows.getCurrent();
       if (win.width !== WIDTH || win.height !== HEIGHT) {
@@ -167,49 +167,38 @@ async function downloadAsZip(folders, cutoffDate) {
   console.log(`${archiveCount} messages exported in one archive.`);
 }
 
-document.getElementById("folderPicker").addEventListener("click", async () => {
-  localyArchiveMessagesBeforeDate(null,null, null);
-});
-
 // Archive messages as .eml files in year-based subfolders inside basePath
-async function localyArchiveMessagesBeforeDate(folder, cutoffDate, basePath) {
-  // TODO manage to use fileIO experimental
-  const accounts = await browser.accounts.list();
-  const localAccount = accounts.find(acct => acct.type === "local");
+async function localyArchiveMessagesBeforeDate(folder, cutoffDate) {
+  console.log("Localy archiving folder: " + folder.name + " - before: " + cutoffDate);
 
-  if (!localAccount) {
-    throw new Error("Local Folders account not found.");
+  const cutoffTimestamp = cutoffDate.getTime();
+  const messages = await browser.messages.list(folder.id);
+  const messagesToArchive = messages.messages.filter(msg => {
+    const msgDate = new Date(msg.date).getTime();
+    return msgDate < cutoffTimestamp;
+  });
+
+  let archiveCount = 0;
+  // Call thunderbird archiving logic
+  for (const msg of messagesToArchive) {
+    const messageYear = new Date(msg.date).getFullYear().toString();
+
+    // Use fileIO experimental to create local folder
+    const accounts = await browser.accounts.list();
+    let createdFolders = [];
+    const localAccount = accounts.find(acct => acct.type === "local");
+    if (!localAccount)
+      throw new Error("Local Folders account not found.");
+    await browser.fileIO.createArchiveLocalFolder(localAccount.id, messageYear);
+    createdFolders.push(messageYear);
+
+    // Move the message to the right local folder
+    await browser.messages.move([msg.id], yearFolder);
+    archiveCount++;
   }
 
-  console.log(localAccount);
-  console.log(localAccount.id);
-  await browser.fileIO.createFolder(localAccount.id, "toto");
+  console.log(`${archiveCount} messages archived from ${folder.name}.`);
 }
-// TODO
-function createLocalFolder(folderName) {
-  let accountManager = Cc["@mozilla.org/messenger/account-manager;1"].getService(Ci.nsIMsgAccountManager);
-  let localFoldersAccount = accountManager.localFoldersAccount;
-  let rootFolder = localFoldersAccount.incomingServer.rootFolder;
-
-  rootFolder.createSubfolder(folderName, null);
-
-  let newFolder = rootFolder.getChildNamed(folderName);
-  console.log("Created folder:", newFolder.prettyName);
-}
-
-// TODO We need to create a symlink beetween thunderbird local storage and the chosen folder locations
-async function createSymlink() {
-  const profileLocalFoldersPath = "C:\\Users\\<YourUser>\\AppData\\Roaming\\Thunderbird\\Profiles\\<profile>.default\\Mail\\Local Folders\\tmp";
-  const targetPath = "C:\\tmp";
-
-  try {
-    await OS.File.symlink(targetPath, profileLocalFoldersPath);
-    console.log("Symlink created successfully");
-  } catch (e) {
-    console.error("Failed to create symlink:", e);
-  }
-}
-
 
 // Archive folder messages before cutoffDate
 async function archiveMessagesBeforeDate(folder, cutoffDate) {
@@ -258,13 +247,11 @@ document.getElementById("ok").addEventListener("click", async () => {
   readyArchibaldWindow();
 
   try {
-    // TODO use checkbox to use local archive logic
-    if(true)
+    if(document.getElementById("local").checked)
     {
       // Simply download a zip folder
       //downloadAsZip(storedFoldersForSelectedAccount, new Date(selectedDate.value));
 
-      // Localy archive at the give location
       let i = 0;
       for (const folder of storedFoldersForSelectedAccount) {
         await localyArchiveMessagesBeforeDate(folder, new Date(selectedDate.value));
@@ -308,13 +295,13 @@ document.getElementById("ok").addEventListener("click", async () => {
 function readyArchibaldWindow()
 {
   // Resize to accomodate progress bar
-  HEIGHT = HEIGHT+60;
+  /*HEIGHT = HEIGHT+60;
   browser.windows.getCurrent().then(win => {
     browser.windows.update(win.id, {
       width: WIDTH,
       height: HEIGHT
     });
-  });
+  });*/
 
   // Show Progress Bar & Disable buttons
   const progressContainer = document.getElementById("progressContainer");
@@ -334,13 +321,13 @@ function resetArchibaldWindow()
   document.getElementById("cancel").disabled = false;
 
   // Resize to hide progressbar
-  HEIGHT = HEIGHT-60;
+  /*HEIGHT = HEIGHT-60;
   browser.windows.getCurrent().then(win => {
     browser.windows.update(win.id, {
       width: WIDTH,
       height: HEIGHT
     });
-  });
+  });*/
 }
 
 // Cancel button - simply closes the window, TODO: cancel archiving ?
