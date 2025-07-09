@@ -37,7 +37,14 @@ this.fileIO = class extends ExtensionAPI {
             parent.createSubfolder(name, null);
           }
 
-          return true;
+          // folder Uri is like mailbox://nobody@Local%20Folders/Archives/2016
+          const folder = parent.getChildNamed(name);
+          const folderPath = folder.prettyPath || folder.filePath || "";
+          const normalizedPath = folderPath.startsWith("/") ? folderPath.slice(1) : folderPath;
+          const webExtFolderId = `${accountId}://${normalizedPath}`;
+          console.log("WebExtension Folder ID:", webExtFolderId);
+
+          return webExtFolderId;
         }
       }
     };

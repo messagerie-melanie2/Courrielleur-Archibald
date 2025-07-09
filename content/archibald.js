@@ -179,25 +179,23 @@ async function localyArchiveMessagesBeforeDate(folder, cutoffDate) {
   });
 
   let archiveCount = 0;
-  // Call thunderbird archiving logic
+  const accounts = await browser.accounts.list();
+  const localAccount = accounts.find(acct => acct.type === "local");
+  if (!localAccount)
+      throw new Error("Local Folders account not found.");
   for (const msg of messagesToArchive) {
     const messageYear = new Date(msg.date).getFullYear().toString();
 
     // Use fileIO experimental to create local folder
-    const accounts = await browser.accounts.list();
-    let createdFolders = [];
-    const localAccount = accounts.find(acct => acct.type === "local");
-    if (!localAccount)
-      throw new Error("Local Folders account not found.");
-    await browser.fileIO.createArchiveLocalFolder(localAccount.id, messageYear);
-    createdFolders.push(messageYear);
+    const yearFolderUri = await browser.fileIO.createArchiveLocalFolder(localAccount.id, messageYear);
 
     // Move the message to the right local folder
-    await browser.messages.move([msg.id], yearFolder);
+    await browser.messages.move([msg.id], yearFolderUri);
     archiveCount++;
   }
 
   console.log(`${archiveCount} messages archived from ${folder.name}.`);
+  return archiveCount;
 }
 
 // Archive folder messages before cutoffDate
@@ -219,6 +217,7 @@ async function archiveMessagesBeforeDate(folder, cutoffDate) {
   }
 
   console.log(`${archiveCount} messages archived from ${folder.name}.`);
+  return archiveCount;
 }
 
 // Cleanup message name to store localy
@@ -254,7 +253,7 @@ document.getElementById("ok").addEventListener("click", async () => {
 
       let i = 0;
       for (const folder of storedFoldersForSelectedAccount) {
-        await localyArchiveMessagesBeforeDate(folder, new Date(selectedDate.value));
+        archiveCount += await localyArchiveMessagesBeforeDate(folder, new Date(selectedDate.value));
 
         // Update progress bar
         const progress = Math.round(((i + 1) / storedFoldersForSelectedAccount.length) * 100);
@@ -267,7 +266,7 @@ document.getElementById("ok").addEventListener("click", async () => {
       // Archive using Thunderbird default logic
       let i = 0;
       for (const folder of storedFoldersForSelectedAccount) {
-        await archiveMessagesBeforeDate(folder, new Date(selectedDate.value));
+        archiveCount += await archiveMessagesBeforeDate(folder, new Date(selectedDate.value));
 
         // Update progress bar
         const progress = Math.round(((i + 1) / storedFoldersForSelectedAccount.length) * 100);
@@ -284,9 +283,9 @@ document.getElementById("ok").addEventListener("click", async () => {
   resetArchibaldWindow();
   setTimeout(() => {
     if(archiveCount > 0)
-      alert("Archivage terminé ! " + archiveCount + " messages déplacés.");
+      document.getElementById("statusLabel").textContent = "Archivage terminé ! " + archiveCount + " messages déplacés.";
     else
-      alert("Aucun message à archiver.");
+      document.getElementById("statusLabel").textContent = "Aucun message à archiver.";
     archiveCount = 0;
   }, 200);
 });
@@ -294,21 +293,12 @@ document.getElementById("ok").addEventListener("click", async () => {
 // Prepare window for archiving
 function readyArchibaldWindow()
 {
-  // Resize to accomodate progress bar
-  /*HEIGHT = HEIGHT+60;
-  browser.windows.getCurrent().then(win => {
-    browser.windows.update(win.id, {
-      width: WIDTH,
-      height: HEIGHT
-    });
-  });*/
-
-  // Show Progress Bar & Disable buttons
+  // Show Progress Bar later if needed. Disable buttons
   const progressContainer = document.getElementById("progressContainer");
-  const progressBar = document.getElementById("progressBar");
   progressContainer.style.display = "block";
   document.getElementById("ok").disabled = true;
   document.getElementById("cancel").disabled = true;
+  document.getElementById("statusLabel").textContent = "Archivage en cours...";
 }
 
 // Reset window state
@@ -319,15 +309,6 @@ function resetArchibaldWindow()
   document.getElementById("progressBar").value = 0;
   document.getElementById("ok").disabled = false;
   document.getElementById("cancel").disabled = false;
-
-  // Resize to hide progressbar
-  /*HEIGHT = HEIGHT-60;
-  browser.windows.getCurrent().then(win => {
-    browser.windows.update(win.id, {
-      width: WIDTH,
-      height: HEIGHT
-    });
-  });*/
 }
 
 // Cancel button - simply closes the window, TODO: cancel archiving ?

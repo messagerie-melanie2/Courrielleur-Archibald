@@ -5,7 +5,7 @@
   "description": "Extension d'archivage de boîtes.",
   "applications": {
 	  "gecko": {
-		"id": "my-extension@example.com"
+		"id": "archibald@developpement-durable.com"
 	  }
 	},
   "experiment_apis": {
@@ -20,11 +20,13 @@
   },
   "action": {
     "default_title": "Archibald",
-    "default_popup": "content/archibald.html"
+    "default_popup": "content/archibald.html",
+    "default_icon": {
+      "32": "skin/images/archibald_logo_32_light.png"
+    }
   },
   "background": {
-    "scripts": ["background.js"],
-    "persistent": true
+    "scripts": ["background.js"]
   },
   "permissions": [
     "tabs",

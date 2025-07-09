@@ -10,7 +10,10 @@
           { "name": "accountId", "type": "string" },
           { "name": "name", "type": "string" }
         ],
-        "async": true
+        "async": true,
+        "returns": {
+          "type": "any"
+        }
       }
     ]
   }
