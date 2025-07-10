@@ -3,11 +3,11 @@
   "name": "Archibald",
   "version": "1.0",
   "description": "Extension d'archivage de boîtes.",
-  "applications": {
-	  "gecko": {
-		"id": "archibald@developpement-durable.com"
-	  }
-	},
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "archibald@developpement-durable.fr"
+    }
+  },
   "experiment_apis": {
     "fileIO": {
       "schema": "./api/fileIO/schema.json",
