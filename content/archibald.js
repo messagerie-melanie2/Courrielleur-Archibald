@@ -350,31 +350,6 @@ async function setDefaultFoldersForAccount(accountId) {
   archibaldLog("Setting default folders for account: "+accountId);
   const folders = await browser.folders.getSubFolders(accountId);
 
-  // Add folders recursively to the default folder list
-  /*const selectedFolders = [];
-  function collect(folderArray) {
-    for (const folder of folderArray) {
-      const blacklist = ["Archives", "Indésirables"];
-      const greylist = ["Corbeille", "Brouillons", "Modèles", "Éléments envoyés"];
-      if (!blacklist.includes(folder.name))
-      {
-        console.log("collecting default folder: "+folder.name);
-        selectedFolders.push({
-          name: folder.name,
-          path: folder.path,
-          id: folder.id,
-          accountId: folder.accountId
-        });
-        console.log("subfolder length for: "+folder.name+" is: "+folder.subFolders?.length);
-        if (folder.subFolders?.length)
-          collect(folder.subFolders);
-        archibaldLog(folder.id);
-      }
-
-    }
-  }
-  collect(folders);*/
-
   // Start to collect folders from the selected account
   const selectedFolders = [];
   for (const folder of folders)
