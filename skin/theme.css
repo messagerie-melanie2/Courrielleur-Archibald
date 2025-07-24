@@ -65,6 +65,20 @@ body {
     background-color: #d0d0d0;
   }
 
+  /* 🔒 Style for disabled button */
+  button:disabled {
+    background-color: #999;
+    color: #ccc;
+    border: 1px solid #aaa;
+    cursor: not-allowed;
+    opacity: 0.6; /* Optional for a faded effect */
+  }
+
+  /* 🛑 Disable hover effect on disabled button */
+  button:disabled:hover {
+    background-color: #999; /* Prevent dark hover */
+  }
+
   #ok{
     background-color: #0078D7;
   }
@@ -195,6 +209,20 @@ body {
 
     button:hover {
       background-color: #444;
+    }
+
+    /* 🔒 Style for disabled button */
+    button:disabled {
+      background-color: #999;
+      color: #ccc;
+      border: 1px solid #aaa;
+      cursor: not-allowed;
+      opacity: 0.6; /* Optional for a faded effect */
+    }
+
+    /* 🛑 Disable hover effect on disabled button */
+    button:disabled:hover {
+      background-color: #999; /* Prevent dark hover */
     }
 
     .folder-buttons {

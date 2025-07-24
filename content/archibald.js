@@ -67,7 +67,7 @@ async function populateInboxDropdown() {
 populateInboxDropdown();
 
 // Dynamicly adjust date and day counts
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   const daysInput = document.getElementById("days");
   const dateInput = document.getElementById("until");
 
@@ -99,22 +99,24 @@ document.addEventListener("DOMContentLoaded", () => {
   oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() - 1);
   const formattedDate = oneYearFromNow.toISOString().split('T')[0];
   dateInput.value = formattedDate;
+
+  restoreFormFromLocalStorage();
 });
 
 // Load folder list for the selected account (create it if necessary)
 async function loadFolderListForSelectedAccount() {
-  console.log("Loading folder list for selected account.");
+  archibaldLog("Loading folder list for selected account.");
   const selectedMailbox = document.getElementById("mailboxDropdown").selectedOptions[0];
   const accountId = JSON.parse(selectedMailbox.value).accountId;
 
   try {
     const storedData = await browser.storage.local.get(accountId);
 
-    if (storedData[accountId]) {
+    if (false){//storedData[accountId]) {
       const folderNames = storedData[accountId].map(f => f.name).join(", ");
-      console.log(`Using stored folder list for account ${accountId}: ${folderNames}`);
+      archibaldLog(`Using stored folder list for account ${accountId}: ${folderNames}`);
     } else {
-      console.log(`No folder list found for ${accountId}, generating default list.`);
+      archibaldLog(`No folder list found for ${accountId}, generating default list.`);
       await setDefaultFoldersForAccount(accountId);
     }
   } catch (err) {
@@ -164,12 +166,12 @@ async function downloadAsZip(folders, cutoffDate) {
   });
 
   URL.revokeObjectURL(url);
-  console.log(`${archiveCount} messages exported in one archive.`);
+  archibaldLog(`${archiveCount} messages exported in one archive.`);
 }
 
 // Archive messages as .eml files in year-based subfolders inside basePath
 async function localyArchiveMessagesBeforeDate(folder, cutoffDate) {
-  console.log("Localy archiving folder: " + folder.name + " - before: " + cutoffDate);
+  archibaldLog("Localy archiving folder: " + folder.name + " - before: " + cutoffDate);
 
   const cutoffTimestamp = cutoffDate.getTime();
   const messages = await browser.messages.list(folder.id);
@@ -194,13 +196,13 @@ async function localyArchiveMessagesBeforeDate(folder, cutoffDate) {
     archiveCount++;
   }
 
-  console.log(`${archiveCount} messages archived from ${folder.name}.`);
+  archibaldLog(`${archiveCount} messages archived from ${folder.name}.`);
   return archiveCount;
 }
 
 // Archive folder messages before cutoffDate
 async function archiveMessagesBeforeDate(folder, cutoffDate) {
-  console.log("Archiving folder: " + folder.name + " - before: " + cutoffDate);
+  archibaldLog("Archiving folder: " + folder.name + " - before: " + cutoffDate);
 
   const cutoffTimestamp = cutoffDate.getTime();
   const messages = await browser.messages.list(folder.id);
@@ -216,7 +218,7 @@ async function archiveMessagesBeforeDate(folder, cutoffDate) {
     archiveCount++;
   }
 
-  console.log(`${archiveCount} messages archived from ${folder.name}.`);
+  archibaldLog(`${archiveCount} messages archived from ${folder.name}.`);
   return archiveCount;
 }
 
@@ -246,6 +248,7 @@ document.getElementById("ok").addEventListener("click", async () => {
   readyArchibaldWindow();
 
   try {
+    storeFormValues();
     if(document.getElementById("local").checked)
     {
       // Simply download a zip folder
@@ -290,6 +293,25 @@ document.getElementById("ok").addEventListener("click", async () => {
   }, 200);
 });
 
+// Store form values in local storage
+function storeFormValues()
+{
+  browser.storage.local.set({ ["days"]: document.getElementById("days").value });
+  browser.storage.local.set({ ["local"]: document.getElementById("local").checked });
+}
+
+// Restore the Archibald form from local storage
+async function restoreFormFromLocalStorage()
+{
+  // Local archiving checkbox (checked by default)
+  const local = (await browser.storage.local.get("local")).local;
+  document.getElementById("local").checked = (local === undefined || local === null) ? true : !!local;
+
+  // Day count value (365 by default)
+  const days = (await browser.storage.local.get("days")).days;
+  document.getElementById("days").value = days ?? "365";
+}
+
 // Prepare window for archiving
 function readyArchibaldWindow()
 {
@@ -311,55 +333,85 @@ function resetArchibaldWindow()
   document.getElementById("cancel").disabled = false;
 }
 
-// Cancel button - simply closes the window, TODO: cancel archiving ?
+// Close the window on cancel
 document.getElementById("cancel").addEventListener("click", async () => {
-    console.log("Closing Archibald");
-    const win = await browser.windows.getCurrent();
-    await browser.windows.remove(win.id);
+    storeFormValues();
+    archibaldLog("Closing main window");
+    window.close();
 });
+
+function archibaldLog(consoleString)
+{
+  console.log("[Archibald] - "+ consoleString);
+}
 
 async function setDefaultFoldersForAccount(accountId) {
   const account = await browser.accounts.get(accountId);
-  console.log("Setting default folders for account: "+accountId);
+  archibaldLog("Setting default folders for account: "+accountId);
   const folders = await browser.folders.getSubFolders(accountId);
 
-  // Flatten folders recursively
-  const selectedFolders = [];
+  // Add folders recursively to the default folder list
+  /*const selectedFolders = [];
   function collect(folderArray) {
     for (const folder of folderArray) {
-      const blacklist = ["Archives", "Corbeille", "Indésirables", "Brouillons", "Modèles", "Éléments envoyés"];
+      const blacklist = ["Archives", "Indésirables"];
+      const greylist = ["Corbeille", "Brouillons", "Modèles", "Éléments envoyés"];
       if (!blacklist.includes(folder.name))
       {
+        console.log("collecting default folder: "+folder.name);
         selectedFolders.push({
           name: folder.name,
           path: folder.path,
           id: folder.id,
           accountId: folder.accountId
         });
+        console.log("subfolder length for: "+folder.name+" is: "+folder.subFolders?.length);
         if (folder.subFolders?.length)
           collect(folder.subFolders);
-        console.log(folder.id);
+        archibaldLog(folder.id);
       }
 
     }
   }
-  collect(folders);
+  collect(folders);*/
+
+  // Start to collect folders from the selected account
+  const selectedFolders = [];
+  for (const folder of folders)
+    await collect(folder);
+
+  async function collect(folder) {
+    const blacklist = ["Archives", "Indésirables"];
+    const greylist = ["Corbeille", "Brouillons", "Modèles", "Éléments envoyés"];
+
+    if (!blacklist.includes(folder.name) && !greylist.includes(folder.name)) {
+      archibaldLog("Collecting default folder:", folder.name);
+
+      selectedFolders.push({
+        name: folder.name,
+        path: folder.path,
+        id: folder.id,
+        accountId: folder.accountId,
+      });
+
+      // Fetch subfolders explicitly
+      const subFolders = await messenger.folders.getSubFolders(folder.id);
+
+      for (const sub of subFolders) {
+        await collect(sub); // recurse into subfolders
+      }
+    }
+  }
 
   const filePath = "defaults/"+ accountId +".json";
-
-  await browser.storage.local.set({
-    [accountId]: selectedFolders
-  });
-
-  console.log("Saved default folders for account: "+accountId);
+  await browser.storage.local.set({ [accountId]: selectedFolders });
+  archibaldLog("Saved default folders for account: "+accountId);
 }
 
-// Open folder list popup
-document.getElementById("folders").addEventListener("click", async () => {
-  const dropdown = document.getElementById("mailboxDropdown");
-  const selectedOption = dropdown.options[dropdown.selectedIndex];
-  const accountId = JSON.parse(selectedOption.value).accountId;
-  const width = 500;
+// Open folder list iframe
+document.getElementById("foldersButton").addEventListener("click", async () => {
+  // This is old code to open the html page in a separate window
+  /*const width = 500;
   const height = 500;
 
   // Get the current screen dimensions
@@ -372,12 +424,47 @@ document.getElementById("folders").addEventListener("click", async () => {
     type: "popup",
     width: width,
     height: height
-  });
+  });*/
+
+  // We now use an iFrame instead of a separate window to easy the flow
+  const dropdown = document.getElementById("mailboxDropdown");
+  const selectedOption = dropdown.options[dropdown.selectedIndex];
+  const accountId = JSON.parse(selectedOption.value).accountId;
+
+  document.getElementById("foldersButton").disabled = true;
+  document.getElementById("folderSelectionFrame").src = `./archibaldFolders.html?accountId=${encodeURIComponent(accountId)}`;
+  document.getElementById("folderSelectionDiv").style.display = "block";
 });
 
+// This catches the request from the iframe to hide it
+function hideArchibaldFolders()
+{
+  document.getElementById("folderSelectionDiv").style.display = "none";
+  document.getElementById("foldersButton").disabled = false;
+}
+
 window.addEventListener("message", (event) => {
-  if (event.data?.type === "selectedFolders") {
-    const selectedFolders = event.data.folders;
-    console.log("Received folders:", selectedFolders);
+  switch (event.data.action)
+  {
+    case "setArchibaldFoldersHeight":
+      setArchibaldFolderHeight(event.data.height);
+      break;
+    case "closeArchibaldFolders":
+      hideArchibaldFolders();
+      break;
+    default:
+      archibaldLog("Warning: Used default case in 'addEventListener' with action "+event.data.action);
+      break;
   }
 });
+
+function setArchibaldFolderHeight()
+{
+  const iframe = document.getElementById("folderSelectionFrame");
+  const newHeight = event.data.height;
+  // Apply height but respect your max height
+  iframe.style.height = Math.min(newHeight, 400) + "px";
+
+  // Also make sure the container div is visible
+  document.getElementById("folderSelectionDiv").style.display = "block";
+}

@@ -1,4 +1,5 @@
-let WIDTH = 500;
+// Not usefull in an Iframe
+/*let WIDTH = 500;
 let HEIGHT = 500;
 
 // Prevent user from resizing the window
@@ -21,7 +22,7 @@ function enforceFixedSizeOnResize() {
       });
     });
 }
-document.addEventListener("DOMContentLoaded", enforceFixedSizeOnResize);
+document.addEventListener("DOMContentLoaded", enforceFixedSizeOnResize);*/
 
 function getAccountIdFromUrl() {
   const params = new URLSearchParams(window.location.search);
@@ -30,7 +31,7 @@ function getAccountIdFromUrl() {
 
 document.addEventListener("DOMContentLoaded", async () => {
   const folderListContainer = document.getElementById("folderList");
-  const accountTitle = document.getElementById("accountName");
+  //const accountTitle = document.getElementById("accountName");
   const accountId = getAccountIdFromUrl();
   const storedData = await browser.storage.local.get(accountId);
 
@@ -47,18 +48,20 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
   }
 
-  accountTitle.textContent = `Compte : ${account.name}`;
+  //accountTitle.textContent = `Compte : ${account.name}`;
 
   console.log(account);
   // Start populating from root folders
   const folders = await browser.folders.getSubFolders(accountId);
   // Do not render some default folders
-  const blacklist = ["Archives", "Corbeille", "Indésirables", "Brouillons", "Modèles", "Éléments envoyés"];
+  const blacklist = ["Archives", "Indésirables"];
   for (const folder of folders) {
     if (!blacklist.includes(folder.name)) {
       await renderFolder(folder, folderListContainer, 0, storedData[accountId]);
     }
   }
+  // Send height to main popup
+  adjustFormHeight();
 });
 
 async function renderFolder(folder, container, level, storedFolders) {
@@ -66,6 +69,11 @@ async function renderFolder(folder, container, level, storedFolders) {
   item.className = "folder-item";
 
   let checked = true;
+  // Default greylist folders to unchecked
+  const greylist = ["Corbeille", "Brouillons", "Modèles", "Éléments envoyés"];
+  if(greylist.includes(folder.name))
+    checked = false;
+
   if (storedFolders)
     checked = storedFolders.some(f => f.name === folder.name);
 
@@ -93,6 +101,12 @@ async function renderFolder(folder, container, level, storedFolders) {
   for (const sub of subFolders) {
     await renderFolder(sub, container, level + 1, storedFolders);
   }
+}
+
+function adjustFormHeight() {
+  // Send the height of the form to archibald.js
+  const height = document.documentElement.scrollHeight;
+  window.parent.postMessage({ action: "setArchibaldFoldersHeight", height }, "*");
 }
 
 // Ok button
@@ -132,9 +146,10 @@ document.getElementById("ok").addEventListener("click", async () => {
       [accountId]: selectedFolders
     });
 
-    const win = await browser.windows.getCurrent();
-    await browser.windows.remove(win.id);
-
+    // Useless with iFrame, we need to hide the parent div instead
+    /*const win = await browser.windows.getCurrent();
+    await browser.windows.remove(win.id);*/
+    closeArchibaldFolders();
   } catch (error) {
     console.error("Error while saving folders :", error);
   }
@@ -142,6 +157,14 @@ document.getElementById("ok").addEventListener("click", async () => {
 
 // Cancel button
 document.getElementById("cancel").addEventListener("click", async () => {
-    const win = await browser.windows.getCurrent();
-    await browser.windows.remove(win.id);
+    // Useless with iFrame, we need to hide the parent div instead
+    /*const win = await browser.windows.getCurrent();
+    await browser.windows.remove(win.id);*/
+    closeArchibaldFolders();
 });
+
+function closeArchibaldFolders()
+{
+  // Send the request to close to archibald.js in order to hide the iframe div
+  window.parent.postMessage({ action: "closeArchibaldFolders" }, "*");
+}
