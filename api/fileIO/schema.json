@@ -8,7 +8,8 @@
         "description": "Write new local folder",
         "parameters": [
           { "name": "accountId", "type": "string" },
-          { "name": "name", "type": "string" }
+          { "name": "name", "type": "string" },
+          { "name": "parent", "type": "string" }
         ],
         "async": true,
         "returns": {

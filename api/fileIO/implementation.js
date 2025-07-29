@@ -5,7 +5,7 @@ this.fileIO = class extends ExtensionAPI {
   getAPI(context) {
     return {
       fileIO: {
-        async createArchiveLocalFolder(accountId, name) {
+        async createArchiveLocalFolder(accountId, name, parentPath) {
           // Find the account
           let account = MailServices.accounts.accounts.find(acc => acc.key === accountId);
           if (!account) {
@@ -19,11 +19,12 @@ this.fileIO = class extends ExtensionAPI {
             rootFolder.createSubfolder("Archives", null);
 
           // Find parent folder by path (default to root)
-          const parentPath = "/Archives";
+          parentPath = "|Archives|"+parentPath;
+          console.log("createArchiveLocalFolder - parentPath: "+parentPath);
           let parent = rootFolder;
 
-          if (parentPath && parentPath !== "/") {
-            const parts = parentPath.split("/").filter(p => p);
+          if (parentPath && parentPath !== "|") {
+            const parts = parentPath.split("|").filter(p => p);
             for (let part of parts) {
               if (!parent.containsChildNamed(part)) {
                 throw new Error(`Parent folder "${parentPath}" not found`);
@@ -31,20 +32,24 @@ this.fileIO = class extends ExtensionAPI {
               parent = parent.getChildNamed(part);
             }
           }
+          console.log(parent);
 
+          console.log("createArchiveLocalFolder - creating "+name);
           // Create folder if it doesn't already exist
           if (!parent.containsChildNamed(name)) {
             parent.createSubfolder(name, null);
           }
 
+          // Return the folderId to move message in it
           // folder Uri is like mailbox://nobody@Local%20Folders/Archives/2016
-          const folder = parent.getChildNamed(name);
+          /*const folder = parent.getChildNamed(name);
           const folderPath = folder.prettyPath || folder.filePath || "";
           const normalizedPath = folderPath.startsWith("/") ? folderPath.slice(1) : folderPath;
           const webExtFolderId = `${accountId}://${normalizedPath}`;
           console.log("WebExtension Folder ID:", webExtFolderId);
 
-          return webExtFolderId;
+          return webExtFolderId;*/
+          return "";
         }
       }
     };

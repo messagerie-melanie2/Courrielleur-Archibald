@@ -112,7 +112,7 @@ async function loadFolderListForSelectedAccount() {
   try {
     const storedData = await browser.storage.local.get(accountId);
 
-    if (false){//storedData[accountId]) {
+    if (storedData[accountId]) {
       const folderNames = storedData[accountId].map(f => f.name).join(", ");
       archibaldLog(`Using stored folder list for account ${accountId}: ${folderNames}`);
     } else {
@@ -169,8 +169,71 @@ async function downloadAsZip(folders, cutoffDate) {
   archibaldLog(`${archiveCount} messages exported in one archive.`);
 }
 
+async function createLocalFolder(folder, localAccountId, parentPath, storedFolders) {
+  // Ne pas créer le dossiers non cochés
+  if(storedFolders.some(f => f.name === folder.name))
+  {
+    // Create given folder in the local account
+    await browser.fileIO.createArchiveLocalFolder(localAccountId, folder.name, parentPath);
+
+    // Recursively create subfolders for this folder
+    const subFolders = await browser.folders.getSubFolders(folder.id);
+    parentPath = parentPath+folder.name+"|";
+    for (const sub of subFolders) {
+      await createLocalFolder(sub, localAccountId, parentPath, storedFolders);
+    }
+  }
+}
+
+// New code archiving by folder
+async function localyArchiveMessagesBeforeDate(accountId, folder, cutoffDate) {
+  archibaldLog("Archiving folder: " + folder.name + " before: " + cutoffDate);
+  let archiveCount = 0;
+
+  /*for (const msg of messagesToArchive) {
+    await browser.messages.move([msg.id], currentFolderUri);
+    archiveCount++;
+  }
+
+  archibaldLog(`${archiveCount} messages archived from ${folder.name}.`);*/
+  return archiveCount;
+}
+
+async function createAccountLocalFolders(accountId)
+{
+  const accounts = await browser.accounts.list();
+  const account = accounts.find(acc => acc.id === accountId);
+  const storedData = await browser.storage.local.get(accountId);
+
+  const localAccount = accounts.find(acct => acct.type === "local");
+  if (!localAccount)
+      throw new Error("Local account not found.");
+
+  if (!account) {
+      archibaldLog(`No account found for id ${accountId}`);
+      return;
+  }
+
+  // Creating the account main folder under "Archives" (the default root)
+  await browser.fileIO.createArchiveLocalFolder(localAccount.id, account.name, "");
+  const parentPath = account.name+"|";
+
+  //accountTitle.textContent = `Compte : ${account.name}`;
+  // Start populating from root folders
+  const folders = await browser.folders.getSubFolders(accountId);
+  // Do not create some default folders
+  const blacklist = ["Archives", "Indésirables"];
+  for (const folder of folders) {
+    if (!blacklist.includes(folder.name)) {
+      // parentPath in the form of accountname/folder1/folder2
+      await createLocalFolder(folder, localAccount.id, parentPath, storedData[accountId]);
+    }
+  }
+}
+
+// Old code archiving by year
 // Archive messages as .eml files in year-based subfolders inside basePath
-async function localyArchiveMessagesBeforeDate(folder, cutoffDate) {
+async function yearlyArchiveMessagesBeforeDate(folder, cutoffDate) {
   archibaldLog("Localy archiving folder: " + folder.name + " - before: " + cutoffDate);
 
   const cutoffTimestamp = cutoffDate.getTime();
@@ -256,7 +319,9 @@ document.getElementById("ok").addEventListener("click", async () => {
 
       let i = 0;
       for (const folder of storedFoldersForSelectedAccount) {
-        archiveCount += await localyArchiveMessagesBeforeDate(folder, new Date(selectedDate.value));
+        // Create local folder hierarchy
+        createAccountLocalFolders(accountId);
+        archiveCount += await localyArchiveMessagesBeforeDate(accountId, folder, new Date(selectedDate.value));
 
         // Update progress bar
         const progress = Math.round(((i + 1) / storedFoldersForSelectedAccount.length) * 100);
