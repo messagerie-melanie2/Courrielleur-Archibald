@@ -19,25 +19,22 @@ this.fileIO = class extends ExtensionAPI {
             rootFolder.createSubfolder("Archives", null);
 
           // Find parent folder by path (default to root)
-          parentPath = "|Archives|"+parentPath;
-          console.log("createArchiveLocalFolder - parentPath: "+parentPath);
+          parentPath = "/Archives/"+parentPath;
           let parent = rootFolder;
 
-          if (parentPath && parentPath !== "|") {
-            const parts = parentPath.split("|").filter(p => p);
+          if (parentPath && parentPath !== "/") {
+            const parts = parentPath.split("/").filter(p => p);
             for (let part of parts) {
-              if (!parent.containsChildNamed(part)) {
+              if (!parent.containsChildNamed(part.replaceAll("/","／"))) {
                 throw new Error(`Parent folder "${parentPath}" not found`);
               }
-              parent = parent.getChildNamed(part);
+              parent = parent.getChildNamed(part.replaceAll("/","／"));
             }
           }
-          console.log(parent);
-
-          console.log("createArchiveLocalFolder - creating "+name);
           // Create folder if it doesn't already exist
-          if (!parent.containsChildNamed(name)) {
-            parent.createSubfolder(name, null);
+          if (!parent.containsChildNamed(name.replaceAll("/","／"))) {
+            console.log("createArchiveLocalFolder - creating "+name);
+            parent.createSubfolder(name.replaceAll("/","／"), null);
           }
 
           // Return the folderId to move message in it
