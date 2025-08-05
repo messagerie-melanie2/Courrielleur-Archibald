@@ -57,6 +57,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const blacklist = ["Archives", "Indésirables"];
   for (const folder of folders) {
     if (!blacklist.includes(folder.name)) {
+      console.log(folder.name);
       await renderFolder(folder, folderListContainer, 0, storedData[accountId]);
     }
   }
@@ -102,6 +103,13 @@ async function renderFolder(folder, container, level, storedFolders) {
     await renderFolder(sub, container, level + 1, storedFolders);
   }
 }
+
+document.getElementById("masterCheckbox").addEventListener("change", function() {
+  const allFolderCheckboxes = document.querySelectorAll('#folderList input[type="checkbox"]');
+  allFolderCheckboxes.forEach(checkbox => {
+    checkbox.checked = this.checked;
+  });
+});
 
 function adjustFormHeight() {
   // Send the height of the form to archibald.js

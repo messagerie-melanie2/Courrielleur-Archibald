@@ -169,18 +169,34 @@ async function downloadAsZip(folders, cutoffDate) {
   archibaldLog(`${archiveCount} messages exported in one archive.`);
 }
 
+// Create a given account folder (and its parent folders if needed) in the profile local folder
 async function createLocalFolder(folder, localAccountId, parentPath, storedFolders) {
-  // Ne pas créer le dossiers non cochés
-  if(storedFolders.some(f => f.name === folder.name))
-  {
-    // Create given folder in the local account
-    await browser.fileIO.createArchiveLocalFolder(localAccountId, folder.name.replaceAll("/","／"), parentPath);
+  const isFolderChecked = storedFolders.some(f => f.name === folder.name);
 
-    // Recursively create subfolders for this folder
-    const subFolders = await browser.folders.getSubFolders(folder.id);
-    parentPath = parentPath+folder.name.replaceAll("/","／")+"/";
+  // Recursive function to check if any descendant folder is checked
+  async function hasCheckedDescendants(currentFolder) {
+    const subFolders = await browser.folders.getSubFolders(currentFolder.id);
     for (const sub of subFolders) {
-      await createLocalFolder(sub, localAccountId, parentPath, storedFolders);
+      if (storedFolders.some(f => f.name === sub.name)) {
+        return true;
+      }
+      if (await hasCheckedDescendants(sub)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  const needsToBeCreated = isFolderChecked || await hasCheckedDescendants(folder);
+
+  if (needsToBeCreated) {
+    const sanitizedFolderName = folder.name.replaceAll("/", "／");
+    await browser.fileIO.createArchiveLocalFolder(localAccountId, sanitizedFolderName, parentPath);
+
+    const newParentPath = parentPath + sanitizedFolderName + "/";
+    const subFolders = await browser.folders.getSubFolders(folder.id);
+    for (const sub of subFolders) {
+      await createLocalFolder(sub, localAccountId, newParentPath, storedFolders);
     }
   }
 }
@@ -221,7 +237,7 @@ async function getLocalFolder(targetPath) {
   for (const rootFolder of localAccountRootFolders) {
     if(rootFolder.name = "Archives")
     {
-      archibaldLog("Starting folder search recurence inside Archives local folder for "+targetPath);
+      archibaldLog("Starting folder search recurence inside Archives local folder for "+decodeLegacyFolderName(targetPath));
       // Slicing the first nameParts wich is always "Archives" since we filtered it already
       const result = await findFolderByParts(rootFolder, nameParts.slice(1));
       if (result)
