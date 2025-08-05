@@ -34,7 +34,7 @@ this.fileIO = class extends ExtensionAPI {
           // Create folder if it doesn't already exist
           if (!parent.containsChildNamed(name.replaceAll("/","／"))) {
             console.log("createArchiveLocalFolder - creating "+name);
-            parent.createSubfolder(name.replaceAll("/","／"), null);
+            parent.createSubfolder(name, null);
           }
 
           // Return the folderId to move message in it

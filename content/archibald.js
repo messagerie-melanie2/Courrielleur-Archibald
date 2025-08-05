@@ -190,15 +190,22 @@ async function createLocalFolder(folder, localAccountId, parentPath, storedFolde
   const needsToBeCreated = isFolderChecked || await hasCheckedDescendants(folder);
 
   if (needsToBeCreated) {
-    const sanitizedFolderName = folder.name.replaceAll("/", "／");
+    const sanitizedFolderName = sanitizeFolderName(folder.name);
     await browser.fileIO.createArchiveLocalFolder(localAccountId, sanitizedFolderName, parentPath);
-
     const newParentPath = parentPath + sanitizedFolderName + "/";
     const subFolders = await browser.folders.getSubFolders(folder.id);
     for (const sub of subFolders) {
       await createLocalFolder(sub, localAccountId, newParentPath, storedFolders);
     }
   }
+}
+
+function sanitizeFolderName(name)
+{
+  if (name.includes("/"))
+    name = name.split(" - ")[0].replaceAll("/",".");
+
+  return name;
 }
 
 async function logLocalFolders() {
@@ -239,7 +246,7 @@ async function getLocalFolder(targetPath) {
     {
       archibaldLog("Starting folder search recurence inside Archives local folder for "+decodeLegacyFolderName(targetPath));
       // Slicing the first nameParts wich is always "Archives" since we filtered it already
-      const result = await findFolderByParts(rootFolder, nameParts.slice(1));
+      const result = await findFolderByParts(rootFolder, sanitizeFolderName(nameParts.slice(1)));
       if (result)
         return result;
     }
@@ -337,7 +344,7 @@ async function localyArchiveMessagesBeforeDate(sourceFolder, cutoffDate, account
   });
 
   // localFolderPath is like /Folder1/Sub1/Sub2
-  const localFolderPath = `Archives/${account.name.replaceAll("/","／")}${sourceFolder.path.replace("INBOX","Courrier entrant")}`;
+  const localFolderPath = `Archives/${sanitizeFolderName(account.name)}${sourceFolder.path.replace("INBOX","Courrier entrant")}`;
   //logLocalFolders();
   // We need to find the local folder by matching the true source folder path with the local folders names
   // because local folder ids might be abstracted by thunderbird in some cases
@@ -364,8 +371,8 @@ async function createAccountLocalFolders(account, localAccount)
   }
 
   // Creating the account main folder under "Archives" (the default root)
-  await browser.fileIO.createArchiveLocalFolder(localAccount.id, account.name.replaceAll("/","／"), "");
-  const parentPath = account.name.replaceAll("/","／")+"/";
+  await browser.fileIO.createArchiveLocalFolder(localAccount.id, sanitizeFolderName(account.name), "");
+  const parentPath = sanitizeFolderName(account.name)+"/";
 
   //accountTitle.textContent = `Compte : ${account.name}`;
   // Start populating from root folders

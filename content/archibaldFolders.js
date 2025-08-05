@@ -125,6 +125,8 @@ document.getElementById("ok").addEventListener("click", async () => {
 
     for (const checkbox of checkboxes) {
       if (checkbox.checked) {
+        if (checkbox.id === "masterCheckbox")
+          continue;
         const folderData = JSON.parse(checkbox.dataset.folder);
         selectedFolders.push({
           name: folderData.name,
