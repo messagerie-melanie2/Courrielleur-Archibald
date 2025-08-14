@@ -1,10 +1,18 @@
 var {classes: Cc, interfaces: Ci} = Components;
 var { MailServices } = ChromeUtils.import("resource:///modules/MailServices.jsm");
 
-this.fileIO = class extends ExtensionAPI {
+this.archibaldApi = class extends ExtensionAPI {
+
   getAPI(context) {
+    console.log("Archibald implementation loaded.");
+    this.extension.on("TbArchive", (eventName, data) => {
+      console.log("Request received in implementation from Thunderbird:", data);
+      //this.extension.emit("archibaldApi.onArchiveRequest", data);
+    });
+
     return {
-      fileIO: {
+      archibaldApi: {
+        init() {},
         async createArchiveLocalFolder(accountId, name, parentPath) {
           // Find the account
           let account = MailServices.accounts.accounts.find(acc => acc.key === accountId);

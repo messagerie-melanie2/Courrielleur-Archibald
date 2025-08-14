@@ -1,6 +1,6 @@
 [
   {
-    "namespace": "fileIO",
+    "namespace": "archibaldApi",
     "functions": [
       {
         "name": "createArchiveLocalFolder",
@@ -15,6 +15,12 @@
         "returns": {
           "type": "any"
         }
+      },
+      {
+        "name": "init",
+        "type": "function",
+        "parameters": [],
+        "async": false
       }
     ]
   }

@@ -9,12 +9,12 @@
     }
   },
   "experiment_apis": {
-    "fileIO": {
-      "schema": "./api/fileIO/schema.json",
+    "archibaldApi": {
+      "schema": "./api/archibaldApi/schema.json",
       "parent": {
-        "paths": [["fileIO"]],
+        "paths": [["archibaldApi"]],
         "scopes": ["addon_parent"],
-        "script": "./api/fileIO/implementation.js"
+        "script": "./api/archibaldApi/implementation.js"
       }
     }
   },

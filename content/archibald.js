@@ -1,5 +1,3 @@
-let WIDTH = 500;
-let HEIGHT = 400;
 let archiveCount = 0;
 
 // Prevent user from resizing the window
@@ -191,7 +189,7 @@ async function createLocalFolder(folder, localAccountId, parentPath, storedFolde
 
   if (needsToBeCreated) {
     const sanitizedFolderName = sanitizeFolderName(folder.name);
-    await browser.fileIO.createArchiveLocalFolder(localAccountId, sanitizedFolderName, parentPath);
+    await browser.archibaldApi.createArchiveLocalFolder(localAccountId, sanitizedFolderName, parentPath);
     const newParentPath = parentPath + sanitizedFolderName + "/";
     const subFolders = await browser.folders.getSubFolders(folder.id);
     for (const sub of subFolders) {
@@ -371,7 +369,7 @@ async function createAccountLocalFolders(account, localAccount)
   }
 
   // Creating the account main folder under "Archives" (the default root)
-  await browser.fileIO.createArchiveLocalFolder(localAccount.id, sanitizeFolderName(account.name), "");
+  await browser.archibaldApi.createArchiveLocalFolder(localAccount.id, sanitizeFolderName(account.name), "");
   const parentPath = sanitizeFolderName(account.name)+"/";
 
   //accountTitle.textContent = `Compte : ${account.name}`;
@@ -406,8 +404,8 @@ async function yearlyArchiveMessagesBeforeDate(folder, cutoffDate) {
   for (const msg of messagesToArchive) {
     const messageYear = new Date(msg.date).getFullYear().toString();
 
-    // Use fileIO experimental to create local folder
-    const yearFolderUri = await browser.fileIO.createArchiveLocalFolder(localAccount.id, messageYear);
+    // Use archibaldApi experimental to create local folder
+    const yearFolderUri = await browser.archibaldApi.createArchiveLocalFolder(localAccount.id, messageYear);
 
     // Move the message to the right local folder
     await browser.messages.move([msg.id], yearFolderUri);
