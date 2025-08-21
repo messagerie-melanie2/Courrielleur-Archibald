@@ -274,10 +274,32 @@ var commandController = {
       const extensionId = "archibald@developpement-durable.fr";
       let ext = ExtensionParent.GlobalManager.getExtension(extensionId);
 
+      // if Archibald is installed
       if (ext) {
-        ext.emit("TbArchive", { data: gViewWrapper.dbView.getSelectedMsgHdrs() });
+        let hdrs = gViewWrapper.dbView.getSelectedMsgHdrs();
+        let safeMessages = [];
+        for (let hdr of hdrs) {
+          try {
+            // Find the account key by matching incomingServer
+            let folder = hdr.folder;
+            let account = MailServices.accounts.accounts.find(acc => acc.incomingServer === folder.server);
+            let accountKey = account ? account.key : null;
+
+            safeMessages.push({
+              messageId: hdr.messageId,
+              folderURI: hdr.folder.URI,
+              folderName: hdr.folder.prettyName,
+              accountId: accountKey || null,
+            });
+          } catch (e) {
+            console.error("Could not serialize header:", e);
+          }
+        }
+        // Send formated data to Archibald
+        ext.emit("TbArchive", { messages: safeMessages });
       } else {
-        console.error(`Extension ${extensionId} not found or not loaded.`);
+        // Else, juste use the usual thunderbird archiving method
+        archiver.archiveMessages(gViewWrapper.dbView.getSelectedMsgHdrs());
       }
       // FIN PATCH -----
     },

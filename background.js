@@ -2,15 +2,21 @@
 console.log("Archibald background loaded.");
 browser.archibaldApi.init();
 
-/*browser.archibaldApi.onArchiveRequest.addListener((data) => {
-  console.log("background.js got from implementation:", data);
-  // call any function in background.js here
-  doSomethingInBackground(data);
+browser.archibaldApi.onArchive.addListener((messages) => {
+  console.log("Background received data from implementation:", messages);
+  openPopupWithData(messages);
 });
 
-function doSomethingInBackground(data) {
-  console.log("Doing something in background with:", data);
-}*/
+async function openPopupWithData(messages) {
+  // Store the data somewhere the popup can read
+  chrome.runtime.onMessage.addListener(function listener(request, sender, sendResponse) {
+    if (request.type === "getSafeMessages") {
+      sendResponse(messages);
+      chrome.runtime.onMessage.removeListener(listener);
+    }
+  });
+  await chrome.action.openPopup();
+}
 
 
 // Toolbar Archibald button

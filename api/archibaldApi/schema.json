@@ -22,6 +22,16 @@
         "parameters": [],
         "async": false
       }
+    ],
+    "events": [
+      {
+        "name": "onArchive",
+        "type": "function",
+        "description": "Fired when Thunderbird core sends an archive notification.",
+        "parameters": [
+          { "name": "data", "type": "any" }
+        ]
+      }
     ]
   }
 ]

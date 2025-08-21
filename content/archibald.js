@@ -1,4 +1,5 @@
 let archiveCount = 0;
+let pendingMode = false;
 
 // Prevent user from resizing the window
 /*function enforceFixedSizeOnResize() {
@@ -66,6 +67,25 @@ populateInboxDropdown();
 
 // Dynamicly adjust date and day counts
 document.addEventListener("DOMContentLoaded", async () => {
+  let pendingMessages = null;
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "getSafeMessages" });
+    archibaldLog("Additional data recieved from background.js:");
+    response.messages.forEach((msg, index) => {
+      archibaldLog(`Message[${index}]:`);
+      archibaldLog("  id: " + msg.messageId);
+      archibaldLog("  folderURI: " + msg.folderURI);
+      archibaldLog("  folderName: " + msg.folderName);
+      archibaldLog("  accountId: " + msg.accountId);
+    });
+    pendingMessages = response.messages;
+    pendingMode = true;
+  }
+  catch (ex) {
+    archibaldLog("No additional data. Archibald likely opened through user action.");
+  }
+
+
   const daysInput = document.getElementById("days");
   const dateInput = document.getElementById("until");
 
@@ -99,7 +119,125 @@ document.addEventListener("DOMContentLoaded", async () => {
   dateInput.value = formattedDate;
 
   restoreFormFromLocalStorage();
+
+  if(pendingMessages != null)
+  {
+    processPendingMessages(pendingMessages);
+    pendingMessages = null;
+  }
 });
+
+async function processPendingMessages(messages)
+{
+  // Use the first pending messages to know where we stand
+  const accountId = messages[0].accountId;
+  const folderURI = messages[0].folderURI;
+  let archiveCount = 0;
+
+  // Current Account
+  const accounts = await browser.accounts.list();
+  const account = accounts.find(acc => acc.id === accountId);
+
+  if (!account)
+    throw new Error("Account not found.");
+
+  // We use the previously Selected Folders
+  const storedFolders = await browser.storage.local.get(accountId);
+  const pendingFolders = storedFolders[accountId];
+
+  // Retrieve and clean folders needed for this pendingMessage from folderUri (imap://account/folder1/folder2...)
+  let pendingMessageFolders = folderURI.split("/").slice(3);
+  let currentPath = "";
+
+  // Artificially add the folders of the pendingMessage to create them if needed
+  pendingMessageFolders.forEach(folderName => {
+    currentPath += "/" + folderName;
+    let folder = {
+      name: decodeLegacyFolderName(folderName),
+      path: currentPath,
+      id: accountId + "://" + currentPath.slice(1), // remove leading slash
+      accountId: accountId
+    };
+
+    // Add it to the array if needed
+    if (!pendingFolders.some(f => f.path === folder.path)) {
+      pendingFolders.push(folder);
+    }
+  });
+
+  // We don't need the date for a pendingMessage
+  // Prepare window style
+  readyArchibaldWindow();
+
+  try {
+    // Simply download a zip folder
+    //downloadAsZip(storedFoldersForSelectedAccount, new Date(selectedDate.value));
+
+    // Find the local account of this profile
+    const localAccount = accounts.find(acct => acct.type === "local");
+    if (!localAccount)
+      throw new Error("Local account not found.");
+
+    // Create folder hierarchy of selected account under found localAccount
+    createAccountLocalFolders(account, localAccount, pendingFolders);
+
+    // Move the pendingMessages to the corresponding localAccount folders
+    archiveCount = await localyArchivePendingMessages(messages, account, currentPath);
+  }
+  catch (error) {
+    console.error("An error occurred: "+error.message);
+  }
+
+  // Reset window style
+  setTimeout(() => {
+    resetArchibaldWindow();
+    if(archiveCount > 0)
+    {
+      document.getElementById("statusLabel").textContent = "Archivage terminé ! " + archiveCount + " messages déplacés.";
+    }
+    else
+    {
+      document.getElementById("statusLabel").textContent = "Aucun message à archiver.";
+    }
+    archiveCount = 0;
+  }, 200);
+}
+
+async function localyArchivePendingMessages(messages, account, currentPath) {
+  archibaldLog("Archiving pending messages");
+  const sourceFolderName = decodeLegacyFolderName(messages[0].folderName);
+  const progressBar = document.getElementById("progressBar");
+  progressBar.max = messages.length;
+  progressBar.value = 0;
+  let archiveCount = 0;
+
+  // localFolderPath is like /Folder1/Sub1/Sub2
+  const localFolderPath = `Archives/${sanitizeFolderName(account.name)}${currentPath.replace("INBOX","Courrier entrant")}`;
+
+  // logLocalFolders();
+  // We need to find the local folder by matching the true source folder path with the local folders names
+  // because local folder ids might be abstracted by thunderbird in some cases
+  // Like so: "/Archives/8f990b22/Courrier entrant"
+  const targetFolder = await getLocalFolder(localFolderPath);
+
+  // Move the selected messages
+  for (const msg of messages) {
+
+    let messages = await browser.messages.query({ headerMessageId: msg.messageId });
+    if (messages.messages.length > 0) {
+      // Find the numeric ID from messageId to move it
+      let webExtMessageId = messages.messages[0].id;
+      await browser.messages.move([webExtMessageId], targetFolder.id);
+      progressBar.value += 1;
+      archiveCount++;
+    }
+    else
+      console.warn("Could not find message for messageId", hdr.messageId);
+  }
+
+  archibaldLog(`${archiveCount} pending messages archived from ${sourceFolderName}.`);
+  return archiveCount;
+}
 
 // Load folder list for the selected account (create it if necessary)
 async function loadFolderListForSelectedAccount() {
@@ -215,7 +353,6 @@ async function logLocalFolders() {
   }
 
   async function walkFolders(folder) {
-    console.log(folder.path); // Log the current folder path
     const subFolders = await browser.folders.getSubFolders(folder.id);
     for (const sub of subFolders) {
       await walkFolders(sub); // Recursively log subfolder paths
@@ -359,9 +496,11 @@ async function localyArchiveMessagesBeforeDate(sourceFolder, cutoffDate, account
   return archiveCount;
 }
 
-async function createAccountLocalFolders(account, localAccount)
+async function createAccountLocalFolders(account, localAccount, pendingFolders)
 {
-  const storedData = await browser.storage.local.get(account.id);
+  let storedData = null;
+  if(!pendingFolders)
+    storedData = await browser.storage.local.get(account.id);
 
   if (!account) {
       archibaldLog(`No account found for id ${account.id}`);
@@ -379,7 +518,7 @@ async function createAccountLocalFolders(account, localAccount)
   const blacklist = ["Archives", "Indésirables"];
   for (const folder of folders) {
     if (!blacklist.includes(folder.name)) {
-      await createLocalFolder(folder, localAccount.id, parentPath, storedData[account.id]);
+      await createLocalFolder(folder, localAccount.id, parentPath, pendingFolders ? pendingFolders : storedData[account.id]);
     }
   }
 }
@@ -449,6 +588,11 @@ async function getOrCreateSubfolder(baseDirHandle, name) {
 
 // Ok button
 document.getElementById("ok").addEventListener("click", async () => {
+  if(pendingMode)
+  {
+    document.getElementById("cancel").click();
+    return;
+  }
   // Selected Account
   const mailboxDropdown = document.getElementById("mailboxDropdown");
   const selectedMailbox = mailboxDropdown.options[mailboxDropdown.selectedIndex];
@@ -469,7 +613,7 @@ document.getElementById("ok").addEventListener("click", async () => {
 
   try {
     storeFormValues();
-    if(document.getElementById("local").checked)
+    if(true)//document.getElementById("local").checked)
     {
       // Simply download a zip folder
       //downloadAsZip(storedFoldersForSelectedAccount, new Date(selectedDate.value));
@@ -527,15 +671,15 @@ document.getElementById("ok").addEventListener("click", async () => {
 function storeFormValues()
 {
   browser.storage.local.set({ ["days"]: document.getElementById("days").value });
-  browser.storage.local.set({ ["local"]: document.getElementById("local").checked });
+  //browser.storage.local.set({ ["local"]: document.getElementById("local").checked });
 }
 
 // Restore the Archibald form from local storage
 async function restoreFormFromLocalStorage()
 {
   // Local archiving checkbox (checked by default)
-  const local = (await browser.storage.local.get("local")).local;
-  document.getElementById("local").checked = (local === undefined || local === null) ? true : !!local;
+  const local = true;//(await browser.storage.local.get("local")).local;
+  //document.getElementById("local").checked = (local === undefined || local === null) ? true : !!local;
 
   // Day count value (365 by default)
   const days = (await browser.storage.local.get("days")).days;
@@ -561,6 +705,9 @@ function resetArchibaldWindow()
   document.getElementById("progressBar").value = 0;
   document.getElementById("ok").disabled = false;
   document.getElementById("cancel").disabled = false;
+
+  if(pendingMode)
+    document.getElementById("ok").textContent = "Ok";
 }
 
 // Close the window on cancel
@@ -568,6 +715,7 @@ document.getElementById("cancel").addEventListener("click", async () => {
     storeFormValues();
     archibaldLog("Closing main window");
     window.close();
+    pendingMode = false;
 });
 
 function archibaldLog(consoleString)
