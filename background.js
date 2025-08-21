@@ -1,11 +1,37 @@
 // background.js (loaded via manifest v3)
-console.log("Archibald background loaded.");
-browser.archibaldApi.init();
 
-browser.archibaldApi.onArchive.addListener((messages) => {
-  console.log("Background received data from implementation:", messages);
-  openPopupWithData(messages);
+function archibaldInit()
+{
+  console.log("Archibald background loaded.");
+  browser.archibaldApi.init();
+
+  browser.archibaldApi.onArchive.addListener((messages) => {
+    console.log("Background received data from implementation:", messages);
+    openPopupWithData(messages);
+  });
+}
+
+// Lets be SURE by ANY mean that we are awake and listening
+async function waitForMailTabAndRun() {
+  const tabs = await browser.tabs.query({});
+  for (const tab of tabs) {
+    if (tab.mailTab) {
+      archibaldInit();
+      return;
+    }
+  }
+  // Wait until a mail tab is created
+  browser.tabs.onCreated.addListener(async (tab) => {
+    if (tab.mailTab) {
+      archibaldInit();
+    }
+  });
+}
+waitForMailTabAndRun();
+browser.runtime.onStartup.addListener(() => {
+  archibaldInit();
 });
+archibaldInit();
 
 async function openPopupWithData(messages) {
   // Store the data somewhere the popup can read

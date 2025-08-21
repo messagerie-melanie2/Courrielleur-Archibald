@@ -142,7 +142,14 @@ async function processPendingMessages(messages)
     throw new Error("Account not found.");
 
   // We use the previously Selected Folders
-  const storedFolders = await browser.storage.local.get(accountId);
+  let storedFolders = await browser.storage.local.get(accountId);
+  // This is the first time we use Archibald, we need to construct the folder base list
+  if(storedFolders[accountId] == undefined)
+  {
+    await setDefaultFoldersForAccount(accountId);
+    storedFolders = await browser.storage.local.get(accountId);
+  }
+
   const pendingFolders = storedFolders[accountId];
 
   // Retrieve and clean folders needed for this pendingMessage from folderUri (imap://account/folder1/folder2...)
@@ -240,10 +247,17 @@ async function localyArchivePendingMessages(messages, account, currentPath) {
 }
 
 // Load folder list for the selected account (create it if necessary)
-async function loadFolderListForSelectedAccount() {
-  archibaldLog("Loading folder list for selected account.");
-  const selectedMailbox = document.getElementById("mailboxDropdown").selectedOptions[0];
-  const accountId = JSON.parse(selectedMailbox.value).accountId;
+async function loadFolderListForSelectedAccount(accountId = null) {
+  if(accountId == null)
+  {
+    archibaldLog("Loading folder list for selected account.");
+    const selectedMailbox = document.getElementById("mailboxDropdown").selectedOptions[0];
+    accountId = JSON.parse(selectedMailbox.value).accountId;
+  }
+  else
+    archibaldLog("Loading folder list for pending messages account.");
+
+
 
   try {
     const storedData = await browser.storage.local.get(accountId);
@@ -677,13 +691,20 @@ function storeFormValues()
 // Restore the Archibald form from local storage
 async function restoreFormFromLocalStorage()
 {
-  // Local archiving checkbox (checked by default)
-  const local = true;//(await browser.storage.local.get("local")).local;
-  //document.getElementById("local").checked = (local === undefined || local === null) ? true : !!local;
+  try
+  {
+    // Local archiving checkbox (checked by default)
+    const local = true;//(await browser.storage.local.get("local")).local;
+    //document.getElementById("local").checked = (local === undefined || local === null) ? true : !!local;
 
-  // Day count value (365 by default)
-  const days = (await browser.storage.local.get("days")).days;
-  document.getElementById("days").value = days ?? "365";
+    // Day count value (365 by default)
+    const days = (await browser.storage.local.get("days")).days;
+    document.getElementById("days").value = days ?? "365";
+  }
+  catch
+  {
+
+  }
 }
 
 // Prepare window for archiving
