@@ -70,19 +70,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   let pendingMessages = null;
   try {
     const response = await chrome.runtime.sendMessage({ type: "getSafeMessages" });
-    archibaldLog("Additional data recieved from background.js:");
+    console.log("[Archibald] - Additional data recieved from background.js:");
     response.messages.forEach((msg, index) => {
       archibaldLog(`Message[${index}]:`);
-      archibaldLog("  id: " + msg.messageId);
-      archibaldLog("  folderURI: " + msg.folderURI);
-      archibaldLog("  folderName: " + msg.folderName);
-      archibaldLog("  accountId: " + msg.accountId);
+      console.log("[Archibald] -   id: " + msg.messageId);
+      console.log("[Archibald] -   folderURI: " + msg.folderURI);
+      console.log("[Archibald] -   folderName: " + msg.folderName);
+      console.log("[Archibald] -   accountId: " + msg.accountId);
     });
     pendingMessages = response.messages;
     pendingMode = true;
   }
   catch (ex) {
-    archibaldLog("No additional data. Archibald likely opened through user action.");
+    console.log("[Archibald] - No additional data. Archibald likely opened through user action.");
   }
 
 
@@ -176,24 +176,19 @@ async function processPendingMessages(messages)
   // Prepare window style
   readyArchibaldWindow();
 
-  try {
-    // Simply download a zip folder
-    //downloadAsZip(storedFoldersForSelectedAccount, new Date(selectedDate.value));
+  // Simply download a zip folder
+  //downloadAsZip(storedFoldersForSelectedAccount, new Date(selectedDate.value));
 
-    // Find the local account of this profile
-    const localAccount = accounts.find(acct => acct.type === "local");
-    if (!localAccount)
-      throw new Error("Local account not found.");
+  // Find the local account of this profile
+  const localAccount = accounts.find(acct => acct.type === "local");
+  if (!localAccount)
+    throw new Error("Local account not found.");
 
-    // Create folder hierarchy of selected account under found localAccount
-    createAccountLocalFolders(account, localAccount, pendingFolders);
+  // Create folder hierarchy of selected account under found localAccount
+  await createAccountLocalFolders(account, localAccount, pendingFolders);
 
-    // Move the pendingMessages to the corresponding localAccount folders
-    archiveCount = await localyArchivePendingMessages(messages, account, currentPath);
-  }
-  catch (error) {
-    console.error("An error occurred: "+error.message);
-  }
+  // Move the pendingMessages to the corresponding localAccount folders
+  archiveCount = await localyArchivePendingMessages(messages, account, currentPath);
 
   // Reset window style
   setTimeout(() => {
@@ -211,7 +206,7 @@ async function processPendingMessages(messages)
 }
 
 async function localyArchivePendingMessages(messages, account, currentPath) {
-  archibaldLog("Archiving pending messages");
+  console.log("[Archibald] - Archiving pending messages");
   const sourceFolderName = decodeLegacyFolderName(messages[0].folderName);
   const progressBar = document.getElementById("progressBar");
   progressBar.max = messages.length;
@@ -250,12 +245,12 @@ async function localyArchivePendingMessages(messages, account, currentPath) {
 async function loadFolderListForSelectedAccount(accountId = null) {
   if(accountId == null)
   {
-    archibaldLog("Loading folder list for selected account.");
+    console.log("[Archibald] - Loading folder list for selected account.");
     const selectedMailbox = document.getElementById("mailboxDropdown").selectedOptions[0];
     accountId = JSON.parse(selectedMailbox.value).accountId;
   }
   else
-    archibaldLog("Loading folder list for pending messages account.");
+    console.log("[Archibald] - Loading folder list for pending messages account.");
 
 
 
@@ -383,7 +378,7 @@ async function getLocalFolder(targetPath) {
   const accounts = await browser.accounts.list();
   const localAccount = accounts.find(acct => acct.type === "local");
   if (!localAccount) {
-    console.error("Local Folders account not found.");
+    console.error("[Archibald] - Local Folders account not found.");
     return null;
   }
   const localAccountRootFolders = await browser.folders.getSubFolders(localAccount.id);
@@ -393,7 +388,7 @@ async function getLocalFolder(targetPath) {
   for (const rootFolder of localAccountRootFolders) {
     if(rootFolder.name = "Archives")
     {
-      archibaldLog("Starting folder search recurence inside Archives local folder for "+decodeLegacyFolderName(targetPath));
+      console.log("[Archibald] - Starting folder search recurence inside Archives local folder for "+decodeLegacyFolderName(targetPath));
       // Slicing the first nameParts wich is always "Archives" since we filtered it already
       const result = await findFolderByParts(rootFolder, sanitizeFolderName(nameParts.slice(1)));
       if (result)
@@ -404,7 +399,7 @@ async function getLocalFolder(targetPath) {
   async function findFolderByParts(currentFolder, remainingParts) {
     if (remainingParts.length === 0)
     {
-      archibaldLog("Search finished, returning folder "+currentFolder.name);
+      console.log("[Archibald] - Search finished, returning folder "+currentFolder.name);
       return currentFolder;
     }
     const subFolders = await browser.folders.getSubFolders(currentFolder.id);
@@ -433,6 +428,9 @@ async function getLocalFolder(targetPath) {
 // I don't know why, but folder names accents are in shambles, decode them...
 function decodeLegacyFolderName(str) {
   const legacyMap = {
+    // Html codes
+    '%20': ' ',
+
     // Lowercase
     '&AOa-': 'à',
     '&AOb-': 'á',
@@ -481,7 +479,7 @@ function decodeLegacyFolderName(str) {
 
 // New code to archive by folder instead of by year
 async function localyArchiveMessagesBeforeDate(sourceFolder, cutoffDate, account, localAccount) {
-  archibaldLog("Archiving messages from folder: " + sourceFolder.name + " before: " + cutoffDate);
+  console.log("[Archibald] - Archiving messages from folder: " + sourceFolder.name + " before: " + cutoffDate);
   let archiveCount = 0;
 
   // Select messages that needs to be archived
@@ -540,7 +538,7 @@ async function createAccountLocalFolders(account, localAccount, pendingFolders)
 // Old code archiving by year
 // Archive messages as .eml files in year-based subfolders inside basePath
 async function yearlyArchiveMessagesBeforeDate(folder, cutoffDate) {
-  archibaldLog("Localy archiving folder: " + folder.name + " - before: " + cutoffDate);
+  console.log("[Archibald] - Localy archiving folder: " + folder.name + " - before: " + cutoffDate);
 
   const cutoffTimestamp = cutoffDate.getTime();
   const messages = await browser.messages.list(folder.id);
@@ -571,7 +569,7 @@ async function yearlyArchiveMessagesBeforeDate(folder, cutoffDate) {
 
 // Archive folder messages before cutoffDate
 async function archiveMessagesBeforeDate(folder, cutoffDate) {
-  archibaldLog("Archiving folder: " + folder.name + " - before: " + cutoffDate);
+  console.log("[Archibald] - Archiving folder: " + folder.name + " - before: " + cutoffDate);
 
   const cutoffTimestamp = cutoffDate.getTime();
   const messages = await browser.messages.list(folder.id);
@@ -734,7 +732,7 @@ function resetArchibaldWindow()
 // Close the window on cancel
 document.getElementById("cancel").addEventListener("click", async () => {
     storeFormValues();
-    archibaldLog("Closing main window");
+    console.log("[Archibald] - Closing main window");
     window.close();
     pendingMode = false;
 });
@@ -746,7 +744,7 @@ function archibaldLog(consoleString)
 
 async function setDefaultFoldersForAccount(accountId) {
   const account = await browser.accounts.get(accountId);
-  archibaldLog("Setting default folders for account: "+accountId);
+  console.log("[Archibald] - Setting default folders for account: "+accountId);
   const folders = await browser.folders.getSubFolders(accountId);
 
   // Start to collect folders from the selected account
@@ -759,7 +757,7 @@ async function setDefaultFoldersForAccount(accountId) {
     const greylist = ["Corbeille", "Brouillons", "Modèles", "Éléments envoyés"];
 
     if (!blacklist.includes(folder.name) && !greylist.includes(folder.name)) {
-      archibaldLog("Collecting default folder:", folder.name);
+      console.log("[Archibald] - Collecting default folder:", folder.name);
 
       selectedFolders.push({
         name: folder.name,
@@ -779,7 +777,7 @@ async function setDefaultFoldersForAccount(accountId) {
 
   const filePath = "defaults/"+ accountId +".json";
   await browser.storage.local.set({ [accountId]: selectedFolders });
-  archibaldLog("Saved default folders for account: "+accountId);
+  console.log("[Archibald] - Saved default folders for account: "+accountId);
 }
 
 // Open folder list iframe
@@ -827,7 +825,7 @@ window.addEventListener("message", (event) => {
       hideArchibaldFolders();
       break;
     default:
-      archibaldLog("Warning: Used default case in 'addEventListener' with action "+event.data.action);
+      console.log("[Archibald] - Warning: Used default case in 'addEventListener' with action "+event.data.action);
       break;
   }
 });
