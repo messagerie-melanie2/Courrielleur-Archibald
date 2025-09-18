@@ -25,7 +25,6 @@ ChromeUtils.defineESModuleGetters(this, {
   EnigmailPersistentCrypto:
     "chrome://openpgp/content/modules/persistentCrypto.sys.mjs",
 
-  EnigmailURIs: "chrome://openpgp/content/modules/uris.sys.mjs",
   MailUtils: "resource:///modules/MailUtils.sys.mjs",
   MessageArchiver: "resource:///modules/MessageArchiver.sys.mjs",
   TreeSelection: "chrome://messenger/content/TreeSelection.mjs",
@@ -91,7 +90,11 @@ var commandController = {
       );
     },
     cmd_reply(event) {
-      if (gFolder?.flags & Ci.nsMsgFolderFlags.Newsgroup) {
+      if (
+        gFolder?.flags & Ci.nsMsgFolderFlags.Newsgroup ||
+        (window.messageBrowser?.contentWindow ?? window).currentHeaderData
+          ?.newsgroups
+      ) {
         commandController.doCommand("cmd_replyGroup", event);
       } else {
         commandController.doCommand("cmd_replySender", event);
@@ -321,26 +324,26 @@ var commandController = {
       }
     },
     cmd_deleteMessage() {
-      if (!MailUtils.confirmDelete(false, gDBView, gFolder)) {
-        return;
-      }
       if (parent.location.href == "about:3pane") {
         // If we're in about:message inside about:3pane, it's the parent
         // window that needs to advance to the next message.
         parent.commandController.doCommand("cmd_deleteMessage");
         return;
       }
+      if (!MailUtils.confirmDelete(false, gDBView, gFolder)) {
+        return;
+      }
       dbViewWrapperListener.threadPaneCommandUpdater.updateNextMessageAfterDelete();
       gViewWrapper.dbView.doCommand(Ci.nsMsgViewCommandType.deleteMsg);
     },
     cmd_shiftDeleteMessage() {
-      if (!MailUtils.confirmDelete(true, gDBView, gFolder)) {
-        return;
-      }
       if (parent.location.href == "about:3pane") {
         // If we're in about:message inside about:3pane, it's the parent
         // window that needs to advance to the next message.
         parent.commandController.doCommand("cmd_shiftDeleteMessage");
+        return;
+      }
+      if (!MailUtils.confirmDelete(true, gDBView, gFolder)) {
         return;
       }
       dbViewWrapperListener.threadPaneCommandUpdater.updateNextMessageAfterDelete();
@@ -427,28 +430,37 @@ var commandController = {
         );
       }
     },
-    cmd_space(event) {
+    async cmd_space(event) {
       let messagePaneBrowser;
+      let scrollSource;
+      let messageScroller;
       if (window.messageBrowser) {
         messagePaneBrowser =
           window.messageBrowser.contentWindow.getMessagePaneBrowser();
       } else {
         messagePaneBrowser = window.getMessagePaneBrowser();
       }
-      const contentWindow = messagePaneBrowser.contentWindow;
+
+      scrollSource = messageScroller = messagePaneBrowser.contentWindow;
+
+      if (!scrollSource) {
+        messageScroller =
+          messagePaneBrowser.browsingContext.currentWindowGlobal.getActor(
+            "MessageScroll"
+          );
+        scrollSource = await messageScroller.getSize();
+      }
 
       if (event?.shiftKey) {
         // If at the start of the message, go to the previous one.
-        if (contentWindow?.scrollY > 0) {
-          contentWindow.scrollByPages(-1);
+        if (scrollSource.scrollY > 0) {
+          messageScroller.scrollByPages(-1);
         } else if (Services.prefs.getBoolPref("mail.advance_on_spacebar")) {
           top.goDoCommand("cmd_previousUnreadMsg");
         }
-      } else if (
-        Math.ceil(contentWindow?.scrollY) < contentWindow?.scrollMaxY
-      ) {
+      } else if (Math.ceil(scrollSource.scrollY) < scrollSource.scrollMaxY) {
         // If at the end of the message, go to the next one.
-        contentWindow.scrollByPages(1);
+        messageScroller.scrollByPages(1);
       } else if (Services.prefs.getBoolPref("mail.advance_on_spacebar")) {
         top.goDoCommand("cmd_nextUnreadMsg");
       }
@@ -573,8 +585,9 @@ var commandController = {
         }
         return false;
       case "cmd_viewPageSource":
+        return numSelectedMessages > 0;
       case "cmd_saveAsTemplate":
-        return numSelectedMessages == 1;
+        return numSelectedMessages == 1 && !isDummyMessage;
       case "cmd_reply":
       case "cmd_replySender":
       case "cmd_replyall":
@@ -622,9 +635,7 @@ var commandController = {
         if (numSelectedMessages == 1 && !isDummyMessage) {
           const msgURI = gDBView.URIForFirstSelectedMessage;
           if (msgURI) {
-            showDecrypt =
-              EnigmailURIs.isEncryptedUri(msgURI) ||
-              gEncryptedURIService.isEncrypted(msgURI);
+            showDecrypt = gEncryptedURIService.isEncrypted(msgURI);
           }
         }
         return showDecrypt;
@@ -641,7 +652,11 @@ var commandController = {
           folder()?.isSpecialFolder(Ci.nsMsgFolderFlags.Templates, true)
         );
       case "cmd_replyGroup":
-        return isNewsgroup();
+        return (
+          isNewsgroup() ||
+          (window.messageBrowser?.contentWindow ?? window).currentHeaderData
+            ?.newsgroups
+        );
       case "cmd_markAsRead":
         return (
           numSelectedMessages >= 1 &&
@@ -719,6 +734,9 @@ var commandController = {
           folder()?.server.canHaveFilters
         );
       case "cmd_watchThread": {
+        if (gViewWrapper?.showGroupedBySort) {
+          return false;
+        }
         const enabledObj = {};
         const checkStatusObj = {};
         gViewWrapper.dbView.getCommandStatus(
@@ -792,8 +810,8 @@ var commandController = {
    * Calls the ComposeMessage function with the desired type, and proper default
    * based on the event that fired it.
    *
-   * @param composeType  the nsIMsgCompType to pass to the function
-   * @param event (optional) the event that triggered the call
+   * @param {nsIMsgCompType} composeType - The nsIMsgCompType type to pass.
+   * @param {Event} [event] - The event that triggered the call.
    */
   _composeMsgByType(composeType, event) {
     // If we're the hidden window, then we're not going to have a gFolderDisplay
@@ -910,9 +928,7 @@ var commandController = {
       );
       addedRowsByViewNavigate = gViewWrapper.dbView.rowCount - countBefore;
       if (resultIndex.value == nsMsgViewIndex_None) {
-        if (CrossFolderNavigation(navigationType)) {
-          this._navigate(navigationType);
-        }
+        CrossFolderNavigation(navigationType, this._navigate);
         return;
       }
       if (resultKey.value == nsMsgKey_None) {
@@ -936,9 +952,11 @@ var commandController = {
       window.threadTree.scrollToIndex(resultIndex.value, true);
       window.threadTree.selectedIndex = resultIndex.value;
       // If the thread index has not been determined by viewNavigate(), its
-      // return value will be 0.
+      // return value will be either 0 or nsMsgViewIndex_None.
       const firstIndex =
-        threadIndex.value > 0 ? threadIndex.value : resultIndex.value;
+        threadIndex.value == 0 || threadIndex.value == nsMsgViewIndex_None
+          ? resultIndex.value
+          : threadIndex.value;
       // Scroll the thread to the most reasonable position.
       window.threadTree.scrollExpandedRowIntoView(
         resultIndex.value,
@@ -986,17 +1004,24 @@ var dbViewWrapperListener = {
       "nsIMsgDBViewCommandUpdater",
       "nsISupportsWeakReference",
     ]),
-    updateCommandStatus() {},
-    displayMessageChanged() {},
     updateNextMessageAfterDelete() {
       dbViewWrapperListener._nextViewIndexAfterDelete = gDBView
         ? gDBView.msgToSelectAfterDelete
         : null;
     },
-    summarizeSelection() {
-      return true;
-    },
     selectedMessageRemoved() {
+      // Virtual folders end up here while being loaded, when they restore their
+      // hits from cache, and then realize that some messages no longer exist.
+      // Exit early, to not trigger code which resets the selection after delete,
+      // which would interfere with selection restore while the virtual folder is
+      // being loaded.
+      if (
+        !dbViewWrapperListener.allMessagesLoaded &&
+        gFolder.getFlag(Ci.nsMsgFolderFlags.Virtual)
+      ) {
+        return;
+      }
+
       // We need to invalidate the tree, but this method could get called
       // multiple times, so we won't invalidate until we get to the end of the
       // event loop.
@@ -1044,6 +1069,11 @@ var dbViewWrapperListener = {
     this._allMessagesLoaded = false;
 
     if (!window.threadTree || !gViewWrapper) {
+      if (location.href == "about:message" && window.msgLoading) {
+        // Apparently the view has been re-created after the underlying folder
+        // has been compacted.
+        window.ReloadMessage();
+      }
       return;
     }
 
@@ -1125,6 +1155,9 @@ var dbViewWrapperListener = {
       if (!newMessageFound && !window.threadPane.scrollDetected) {
         window.threadPane.scrollToLatestRowIfNoSelection();
       }
+      if (all) {
+        window.dispatchEvent(new CustomEvent("allMessagesLoaded"));
+      }
     }
     // To be consistent with the behavior in saved searches, update the message
     // count in synthetic views when a quick filter term is entered or cleared.
@@ -1157,13 +1190,13 @@ var dbViewWrapperListener = {
       if (location.href == "about:3pane") {
         // In a 3-pane tab, clear the message pane and selection.
         window.threadTree.selectedIndex = -1;
-      } else if (parent?.location != "about:3pane") {
+      } else if (window.parent && window.parent.location != "about:3pane") {
         // In a standalone message tab or window, close the tab or window.
-        const tabmail = top.document.getElementById("tabmail");
+        const tabmail = window.parent.document.getElementById("tabmail");
         if (tabmail) {
           tabmail.closeTab(window.tabOrWindow);
         } else {
-          top.close();
+          window.parent.close();
         }
       }
       this._nextViewIndexAfterDelete = null;

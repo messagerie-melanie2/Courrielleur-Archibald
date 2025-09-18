@@ -1,6 +1,6 @@
 var {classes: Cc, interfaces: Ci} = Components;
-var { MailServices } = ChromeUtils.import("resource:///modules/MailServices.jsm");
-var { ExtensionCommon } = ChromeUtils.importESModule("resource://gre/modules/ExtensionCommon.sys.mjs");
+const { MailServices } = ChromeUtils.importESModule("resource://gre/modules/MailServices.sys.mjs");
+const { ExtensionCommon } = ChromeUtils.importESModule("resource://gre/modules/ExtensionCommon.sys.mjs");
 
 this.archibaldApi = class extends ExtensionAPI {
   getAPI(context) {
