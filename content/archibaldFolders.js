@@ -23,7 +23,7 @@ function enforceFixedSizeOnResize() {
     });
 }
 document.addEventListener("DOMContentLoaded", enforceFixedSizeOnResize);*/
-
+const BALP_ID = ".-.";
 function getAccountIdFromUrl() {
   const params = new URLSearchParams(window.location.search);
   return params.get("accountId");
@@ -50,15 +50,19 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   //accountTitle.textContent = `Compte : ${account.name}`;
 
-  console.log(account);
+  //console.log(account);
+  //console.log(account.identities[0].email);
   // Start populating from root folders
   const folders = await browser.folders.getSubFolders(accountId);
   // Do not render some default folders
   const blacklist = ["Archives", "Indésirables"];
   for (const folder of folders) {
     if (!blacklist.includes(folder.name)) {
-      console.log(folder.name);
-      await renderFolder(folder, folderListContainer, 0, storedData[accountId]);
+      // Affichage modifié pour les BALP
+      if(account.identities[0].email.includes(BALP_ID))
+        await renderSharedFolder(folder, folderListContainer, 0, storedData[accountId], false);
+      else
+        await renderFolder(folder, folderListContainer, 0, storedData[accountId]);
     }
   }
   // Send height to main popup
@@ -72,7 +76,8 @@ async function renderFolder(folder, container, level, storedFolders) {
   let checked = true;
   // Default greylist folders to unchecked
   const greylist = ["Corbeille", "Brouillons", "Modèles", "Éléments envoyés"];
-  if(greylist.includes(folder.name))
+  const isGreylisted = greylist.some(item => folder.path.includes(`/${item}/`) || folder.path.endsWith(`/${item}`));
+  if (isGreylisted)
     checked = false;
 
   if (storedFolders)
@@ -103,6 +108,83 @@ async function renderFolder(folder, container, level, storedFolders) {
     await renderFolder(sub, container, level + 1, storedFolders);
   }
 }
+
+async function renderSharedFolder(folder, container, level = 0, storedFolders, flattenOneLevel) {
+  // --- Skip technical "Boite partagée" placeholder ---
+  if (folder.name === "Boite partagée") {
+    const subs = await browser.folders.getSubFolders(folder.id);
+    for (const sub of subs) {
+      // when diving into children, enable one-level flattening
+      await renderSharedFolder(sub, container, level, storedFolders, true);
+    }
+    return;
+  }
+
+  // --- Skip "Courrier entrant" itself but flatten its children ---
+  if (folder.name === "Courrier entrant") {
+    const subs = await browser.folders.getSubFolders(folder.id);
+    for (const sub of subs) {
+      // flatten only one level here
+      await renderSharedFolder(sub, container, level, storedFolders, true);
+    }
+    return;
+  }
+
+  // --- Adjust indentation only for the *first* flattened level ---
+  let renderLevel = flattenOneLevel ? 0 : level;
+
+  // --- Render the folder row ---
+  const item = document.createElement("div");
+  item.className = "folder-item";
+
+  let checked = true;
+  const greylist = ["Corbeille", "Brouillons", "Modèles", "Éléments envoyés"];
+  const isGreylisted = greylist.some(item => folder.path.includes(`/${item}/`) || folder.path.endsWith(`/${item}`));
+  if (isGreylisted)
+    checked = false;
+
+  if (storedFolders) {
+    checked = storedFolders.some(f => f.name === folder.name);
+  }
+
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.checked = checked;
+  checkbox.dataset.folder = JSON.stringify({
+    name: folder.name,
+    path: folder.path,
+    id: folder.id,
+    accountId: folder.accountId
+  });
+
+  const labelContainer = document.createElement("div");
+  labelContainer.textContent = isEntrantBalp(folder) ? "Courrier entrant" : folder.name;
+  labelContainer.style.paddingLeft = `${renderLevel * 20}px`;
+  labelContainer.style.flex = "1";
+
+  item.appendChild(checkbox);
+  item.appendChild(labelContainer);
+  container.appendChild(item);
+
+  // --- Render children ---
+  const subFolders = await browser.folders.getSubFolders(folder.id);
+  for (const sub of subFolders) {
+    // Once we pass the first flattened level, go back to normal indentation
+    if(isEntrantBalp(folder))
+      await renderSharedFolder(sub, container, renderLevel, storedFolders, false);
+    else
+      await renderSharedFolder(sub, container, renderLevel + 1, storedFolders, false);
+  }
+}
+
+function isEntrantBalp(folder)
+{
+  // length == 3 because we are looking for this folder "/Boite partagée/sg.snum...""
+  if(folder.path.split("/").length == 3 && folder.path.includes("Boite partag"))
+    return true;
+  return false;
+}
+
 
 document.getElementById("masterCheckbox").addEventListener("change", function() {
   const allFolderCheckboxes = document.querySelectorAll('#folderList input[type="checkbox"]');
