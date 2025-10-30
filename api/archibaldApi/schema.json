@@ -12,15 +12,64 @@
           { "name": "parent", "type": "string" }
         ],
         "async": true,
-        "returns": {
-          "type": "any"
-        }
+        "returns": { "type": "any" }
       },
       {
         "name": "init",
         "type": "function",
         "parameters": [],
         "async": false
+      },
+      {
+        "name": "showFilePicker",
+        "type": "function",
+        "description": "Show a native file or folder picker and return the selected path(s).",
+        "parameters": [
+          {
+            "name": "options",
+            "type": "object",
+            "optional": true,
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": ["open", "openMultiple", "save", "openFolder"],
+                "optional": true
+              },
+              "title": { "type": "string", "optional": true },
+              "startDir": { "type": "string", "optional": true },
+              "filters": {
+                "type": "array",
+                "optional": true,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "extensions": {
+                      "type": "array",
+                      "items": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "async": true,
+        "returns": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      {
+        "name": "createCustomLocalFolder",
+        "type": "function",
+        "description": "Create (or ensure) a custom local folder for the given account at the specified path.",
+        "parameters": [
+          { "name": "accountId", "type": "string" },
+          { "name": "path", "type": "string" }
+        ],
+        "async": true,
+        "returns": { "type": "any" }
       }
     ],
     "events": [

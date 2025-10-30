@@ -12,18 +12,22 @@
     "archibaldApi": {
       "schema": "./api/archibaldApi/schema.json",
       "parent": {
-        "paths": [["archibaldApi"]],
         "scopes": ["addon_parent"],
+        "paths": [["archibaldApi"]],
         "script": "./api/archibaldApi/implementation.js"
       }
     }
   },
   "action": {
     "default_title": "Archibald",
-    "default_popup": "content/archibald.html",
     "default_icon": {
       "32": "skin/images/archibald_logo_32_light.png"
     }
+  },
+  "options_ui": {
+    "page": "content/archibald.html",
+    "open_in_tab": true,
+    "browser_style": true
   },
   "background": {
     "scripts": ["background.js"]

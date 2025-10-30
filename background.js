@@ -1,10 +1,18 @@
+async function openOrFocusArchibaldTab() {
+  await messenger.runtime.openOptionsPage();
+}
+
 // background.js (loaded via manifest v3)
 function archibaldInit()
 {
   console.log("Archibald background loaded.");
   browser.archibaldApi.init();
+
   browser.archibaldApi.onArchive.removeListener(messageListener);
   browser.archibaldApi.onArchive.addListener(messageListener);
+
+  messenger.action.onClicked.removeListener(openOrFocusArchibaldTab);
+  messenger.action.onClicked.addListener(openOrFocusArchibaldTab);
 }
 
 function messageListener(messages) {

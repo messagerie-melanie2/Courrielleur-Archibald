@@ -12,15 +12,18 @@
   <progress id="progressBar" value="0" max="100" style="width: 100%; height: 20px;"></progress>
 </div>
 <body>
+    <h1 style="margin-bottom: 4px;">Archibald</h1>
+    Extension d'archivage du Courrielleur
+    <hr style="width:60%; margin-left: 0; margin-top: 20px;margin-bottom: 20px;">
     <div class="input-group">
       <label for="mailboxDropdown">Archiver la boîte :</label>
       <div style="display: flex; gap: 6px; align-items: center;">
-        <select id="mailboxDropdown" style="flex: 1; font-weight: bold; padding: 6px; font-size: 14px;"></select>
-        <button id="foldersButton" title="Dossiers à archiver." style="height: 32px; padding: 0 10px;">Dossiers</button>
+        <select id="mailboxDropdown" style="flex: 0.5; font-weight: bold; padding: 6px; font-size: 14px;"></select>
+        <button id="foldersButton" title="Dossiers à archiver." style="width: 80px; height: 32px; padding: 0 10px;">Dossiers</button>
       </div>
     </div>
     <div id="folderSelectionDiv" class="input-group" style="display: none;">
-      <div style="display: flex; width: 100%; align-items: center;">
+      <div style="display: flex; width: 60%; align-items: center;">
         <iframe id="folderSelectionFrame" style="border: 1px solid gray; width: 100%; max-height: 400px;"></iframe>
       </div>
     </div>
@@ -35,23 +38,34 @@
       <input type="date" id="until" value="2025-01-10">
     </div>
 
-    <!--<div class="input-group">
-      <label for="local">Archiver localement :</label><br/>
-      <label class="switch">
-        <input class="slider" type="checkbox" id="local">
-        <span class="slider-round"></span>
-      </label>
-    </div>-->
+  <div class="input-group">
+    <label for="useDefaultLocalFolder">Archiver vers le dossier local par défaut :</label><br/>
+    <label class="switch">
+      <input class="slider" type="checkbox" id="useDefaultLocalFolder">
+      <span class="slider-round"></span>
+    </label>
+  </div>
 
-    <div class="buttons" style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+  <div id="localFolderPathDiv" class="input-group" style="display: none;">
+    <label for="localFolderPath">Chemin du dossier à utiliser (les archives de ce compte seront enregistrées directement dans le dossier selectionné):</label>
+    <div style="display: flex; gap: 6px; align-items: center;">
+      <input type="text" id="localFolderPath" readonly tabindex="-1" style="flex: 0.5; box-sizing: border-box; height: 32px; padding: 6px 8px; font-size: 14px; border: 1px solid gray;"/>
+      <button id="btSelectNewLocalFolder" title="Sélectionner un dossier" accesskey="b" style="width: 80px; height: 32px; padding: 0 10px;">
+        Parcourir…
+      </button>
+    </div>
+  </div>
+
+  <hr style="width:60%; margin-left: 0; margin-top: 20px;margin-bottom: 20px;">
+  <div class="buttons" style="width: calc(50% + 40px); display: flex; justify-content: space-between; align-items: center; gap: 10px;">
     <div>
       <label id="versionLabel" style="font-size: 0.9em; color: #888;">v0.9</label>
     </div>
-    <div style="display: flex; align-items: center; gap: 10px;">
+    <div style="display: flex; align-items: right; gap: 10px;">
       <label id="statusLabel"></label>
       <button id="ok">Archiver</button>
       <button id="cancel">Annuler</button>
     </div>
-</div>
+  </div>
 </body>
 </html>
