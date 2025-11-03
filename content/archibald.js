@@ -587,38 +587,6 @@ async function createAccountLocalFolders(account, localAccount, pendingFolders)
   }
 }
 
-// Old code archiving by year
-// Archive messages as .eml files in year-based subfolders inside basePath
-/*async function yearlyArchiveMessagesBeforeDate(folder, cutoffDate) {
-  console.log("[Archibald] - Localy archiving folder: " + folder.name + " - before: " + cutoffDate);
-
-  const cutoffTimestamp = cutoffDate.getTime();
-  const messages = await browser.messages.list(folder.id);
-  const messagesToArchive = messages.messages.filter(msg => {
-    const msgDate = new Date(msg.date).getTime();
-    return msgDate < cutoffTimestamp;
-  });
-
-  let archiveCount = 0;
-  const accounts = await browser.accounts.list();
-  const localAccount = accounts.find(acct => acct.type === "local");
-  if (!localAccount)
-      throw new Error("Local Folders account not found.");
-  for (const msg of messagesToArchive) {
-    const messageYear = new Date(msg.date).getFullYear().toString();
-
-    // Use archibaldApi experimental to create local folder
-    const yearFolderUri = await browser.archibaldApi.createArchiveLocalFolder(localAccount.id, messageYear);
-
-    // Move the message to the right local folder
-    await browser.messages.move([msg.id], yearFolderUri);
-    archiveCount++;
-  }
-
-  archibaldLog(`${archiveCount} messages archived from ${folder.name}.`);
-  return archiveCount;
-}*/
-
 // Archive folder messages before cutoffDate
 async function archiveMessagesBeforeDate(folder, cutoffDate) {
   console.log("[Archibald] - Archiving folder: " + folder.name + " - before: " + cutoffDate);
@@ -847,58 +815,87 @@ function findPath(str, id) {
   return "";
 }
 
-// Store form values in local storage
+// Coerce a found string to boolean, with a fallback default
+function toBool(str, fallback = false) {
+  if (str === "") return fallback;            // not found
+  if (str == null) return fallback;
+  const s = String(str).toLowerCase().trim();
+  return s === "1" || s === "true" || s === "yes" || s === "on";
+}
+
+// Store as "1" / "0" for compactness
+function boolToToken(b) {
+  return b ? "1" : "0";
+}
+
 async function storeFormValues() {
+  // base values
+  const days = document.getElementById("days").value;
+  const useCustomLocalFolderChecked = document.getElementById("useCustomLocalFolder").checked;
+
+  // Save legacy single-value keys (for backwards compatibility)
   await browser.storage.local.set({
-    days: document.getElementById("days").value,
-    useCustomLocalFolder: document.getElementById("useCustomLocalFolder").checked,
+    days,
+    useCustomLocalFolder: useCustomLocalFolderChecked,
   });
 
-  // Get the old string: "accountid,path|accountid,path|..."
-  const stored = await browser.storage.local.get("localFolderPaths");
-  const oldLocalFolderPaths = stored.localFolderPaths || ""; // NOTE: key is 'localFolderPaths'
-
-  // Get the selected accountId
+  // Current account id
   const dropdown = document.getElementById("mailboxDropdown");
   const selectedOption = dropdown.options[dropdown.selectedIndex];
   const accountId = JSON.parse(selectedOption.value).accountId;
 
-  // And the path to save
+  // ----- per-account localFolderPath (existing behavior) -----
+  const storedPaths = await browser.storage.local.get("localFolderPaths");
+  const oldLocalFolderPaths = storedPaths.localFolderPaths || "";
   const localFolderPath = document.getElementById("localFolderPath").value;
-
-  // Build the new string with this account's path upserted
   const newLocalFolderPaths = upsertPair(oldLocalFolderPaths, accountId, localFolderPath);
-
-  // Save the new string of accountid/paths
   await browser.storage.local.set({ localFolderPaths: newLocalFolderPaths });
 
-  archibaldLog("Saved form values with local paths: "+newLocalFolderPaths);
+  // ----- NEW: per-account checkbox state -----
+  const storedFlags = await browser.storage.local.get("useCustomLocalFolderByAccount");
+  const oldUseCustomLocalFolderByAccount = storedFlags.useCustomLocalFolderByAccount || ""; // "accountId,1|accountId,0|..."
+  const newUseCustomLocalFolderByAccount = upsertPair(oldUseCustomLocalFolderByAccount, accountId, boolToToken(useCustomLocalFolderChecked));
+  await browser.storage.local.set({ useCustomLocalFolderByAccount: newUseCustomLocalFolderByAccount });
+
+  archibaldLog(
+    "Saved form values with local paths: " + newLocalFolderPaths +
+    " and per-account flags: " + newUseCustomLocalFolderByAccount
+  );
 }
 
 // Restore the Archibald form from local storage
 async function restoreFormFromLocalStorage() {
   try {
-    // Local archiving checkbox (checked by default)
-    const { useCustomLocalFolder } = await browser.storage.local.get("useCustomLocalFolder");
-    document.getElementById("useCustomLocalFolder").checked = (useCustomLocalFolder === undefined || useCustomLocalFolder === null) ? false : !!useCustomLocalFolder;
-
-    // Get the selected accountId
+    // Current account id
     const dropdown = document.getElementById("mailboxDropdown");
     const selectedOption = dropdown.options[dropdown.selectedIndex];
     const accountId = JSON.parse(selectedOption.value).accountId;
 
-    // Get the string of localFolderPaths and extract the path for the selected accountId
+    // Per-account localFolderPath
     const { localFolderPaths } = await browser.storage.local.get("localFolderPaths");
     const localFolderPath = findPath(localFolderPaths || "", accountId);
     document.getElementById("localFolderPath").value = localFolderPath ?? "";
+
+    // Per-account checkbox flag
+    const { useCustomLocalFolderByAccount } = await browser.storage.local.get("useCustomLocalFolderByAccount");
+    const perAccountFlagToken = findPath(useCustomLocalFolderByAccount || "0", accountId);
+
+    // Fallback to legacy single value if no per-account entry exists
+    let useCustomLocalFolder = toBool(perAccountFlagToken, null);
+    if (useCustomLocalFolder === null) {
+      const legacy = await browser.storage.local.get("useCustomLocalFolder");
+      useCustom = toBool(legacy.useCustomLocalFolder, false);
+    }
+    document.getElementById("useCustomLocalFolder").checked = !!useCustomLocalFolder;
 
     // Day count value (365 by default)
     const { days } = await browser.storage.local.get("days");
     document.getElementById("days").value = days ?? "365";
 
-    // Call this to show/hide localFolderDiv
+    // Show/hide local folder UI
     useCustomLocalFolderChanged();
-  } catch {
+  } catch (e) {
+    archibaldLog("restoreFormFromLocalStorage failed: " + (e && e.message ? e.message : e));
   }
 }
 
