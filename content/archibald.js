@@ -1,48 +1,8 @@
 let archiveCount = 0;
 let pendingMode = false;
 
-// Prevent user from resizing the window
-/*function enforceFixedSizeOnResize() {
-    window.addEventListener("resize", async () => {
-      const win = await browser.windows.getCurrent();
-      if (win.width !== WIDTH || win.height !== HEIGHT) {
-        await browser.windows.update(win.id, {
-          width: WIDTH,
-          height: HEIGHT
-        });
-      }
-    });
-
-    // Set the initial size on load
-    browser.windows.getCurrent().then(win => {
-      browser.windows.update(win.id, {
-        width: WIDTH,
-        height: HEIGHT
-      });
-    });
-}
-document.addEventListener("DOMContentLoaded", enforceFixedSizeOnResize);*/
-
 // List all available accounts
 async function populateInboxDropdown() {
-  /*const dropdown = document.getElementById("mailboxDropdown");
-  const accounts = await browser.accounts.list();
-
-  for (const account of accounts) {
-    for (const folder of account.folders) {
-      if (folder.type === "inbox") {
-        const option = document.createElement("option");
-        option.value = JSON.stringify({
-          accountId: account.id,
-          folderPath: folder.path
-        });
-        option.textContent = `${account.name} – ${folder.name}`;
-        dropdown.appendChild(option);
-      }
-    }
-  }
-  selectedAccountChanged();*/
-
   const dropdown = document.getElementById("mailboxDropdown");
   dropdown.innerHTML = "";
 
@@ -62,7 +22,6 @@ async function populateInboxDropdown() {
 
   selectedAccountChanged();
 }
-//document.addEventListener("DOMContentLoaded", populateInboxDropdown);
 populateInboxDropdown();
 
 // Dynamicly adjust date and day counts
@@ -70,19 +29,24 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("btSelectNewLocalFolder").addEventListener("click", () => {selectNewLocalFolder();});
   document.getElementById("useCustomLocalFolder").addEventListener("change", () => {useCustomLocalFolderChanged();});
 
+  // Check if we have some data to process when this tab opens
   let pendingMessages = null;
-  try {
-    const response = await chrome.runtime.sendMessage({ type: "getSafeMessages" });
-    console.log("[Archibald] - Additional data recieved from background.js:");
-    response.messages.forEach((msg, index) => {
-      archibaldLog(`Message[${index}]:`);
-      console.log("[Archibald] -   id: " + msg.messageId);
-      console.log("[Archibald] -   folderURI: " + msg.folderURI);
-      console.log("[Archibald] -   folderName: " + msg.folderName);
-      console.log("[Archibald] -   accountId: " + msg.accountId);
-    });
-    pendingMessages = response.messages;
-    pendingMode = true;
+  try
+  {
+    const { thunderbirdRequest } = await browser.storage.local.get("thunderbirdRequest");
+    if (thunderbirdRequest && Array.isArray(thunderbirdRequest.messages) && thunderbirdRequest.messages.length)
+    {
+      console.log("[Archibald] - Additional data recieved from background.js:");
+      thunderbirdRequest.messages.forEach((msg, index) => {
+        archibaldLog(`Message[${index}]:`);
+        console.log("[Archibald] -   id: " + msg.messageId);
+        console.log("[Archibald] -   folderURI: " + msg.folderURI);
+        console.log("[Archibald] -   folderName: " + msg.folderName);
+        console.log("[Archibald] -   accountId: " + msg.accountId);
+      });
+      pendingMessages = thunderbirdRequest.messages;
+      pendingMode = true;
+    }
   }
   catch (ex) {
     console.log("[Archibald] - No additional data. Archibald likely opened through user action.");
