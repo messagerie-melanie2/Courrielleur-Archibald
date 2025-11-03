@@ -41,7 +41,7 @@ async function populateInboxDropdown() {
       }
     }
   }
-  loadFolderListForSelectedAccount();*/
+  selectedAccountChanged();*/
 
   const dropdown = document.getElementById("mailboxDropdown");
   dropdown.innerHTML = "";
@@ -60,7 +60,7 @@ async function populateInboxDropdown() {
     }
   }
 
-  loadFolderListForSelectedAccount();
+  selectedAccountChanged();
 }
 //document.addEventListener("DOMContentLoaded", populateInboxDropdown);
 populateInboxDropdown();
@@ -68,7 +68,7 @@ populateInboxDropdown();
 // Dynamicly adjust date and day counts
 document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("btSelectNewLocalFolder").addEventListener("click", () => {selectNewLocalFolder();});
-  document.getElementById("useDefaultLocalFolder").addEventListener("change", () => {useDefaultFolderChanged();});
+  document.getElementById("useCustomLocalFolder").addEventListener("change", () => {useCustomLocalFolderChanged();});
 
   let pendingMessages = null;
   try {
@@ -244,6 +244,14 @@ async function localyArchivePendingMessages(messages, account, currentPath) {
   return archiveCount;
 }
 
+async function selectedAccountChanged(accountId = null){
+  // Reload folder list
+  loadFolderListForSelectedAccount(accountId);
+
+  // Restore form to load path
+  restoreFormFromLocalStorage();
+}
+
 // Load folder list for the selected account (create it if necessary)
 async function loadFolderListForSelectedAccount(accountId = null) {
   if(accountId == null)
@@ -272,9 +280,9 @@ async function loadFolderListForSelectedAccount(accountId = null) {
   }
 }
 // On load - This is already done when populating the dropbox
-// document.addEventListener("DOMContentLoaded", async () => { await loadFolderListForSelectedAccount(); });
+// document.addEventListener("DOMContentLoaded", async () => { await selectedAccountChanged(); });
 // On account combobox change
-document.getElementById("mailboxDropdown").addEventListener("change", loadFolderListForSelectedAccount);
+document.getElementById("mailboxDropdown").addEventListener("change", selectedAccountChanged);
 
 
 // Custom zip archive logic
@@ -317,12 +325,12 @@ async function downloadAsZip(folders, cutoffDate) {
   archibaldLog(`${archiveCount} messages exported in one archive.`);
 }
 
-function useDefaultFolderChanged()
+function useCustomLocalFolderChanged()
 {
   const div = document.getElementById("localFolderPathDiv");
-  const cb  = document.getElementById("useDefaultLocalFolder");
+  const cb  = document.getElementById("useCustomLocalFolder");
 
-  div.style.display = cb.checked ? "none" : "block";
+  div.style.display = cb.checked ? "block" : "none";
 }
 
 /**
@@ -494,7 +502,6 @@ async function getLocalFolder(originalAccount, targetPath) {
 
     const nextFolder = subFolders.find(f => f.name === decodeLegacyFolderName(nextPart));
     if (!nextFolder) {
-      console.warn(`Folder not found`);
       return null;
     }
 
@@ -599,7 +606,7 @@ async function createAccountLocalFolders(account, localAccount, pendingFolders)
       archibaldLog(`No account found for id ${account.id}`);
       return;
   }
-  console.log(localAccount.id);
+
   // Creating the account main folder under "Archives" (the default root)
   await browser.archibaldApi.createArchiveLocalFolder(localAccount.id, sanitizeFolderName(account.name), "");
   const parentPath = sanitizeFolderName(account.name)+"/";
@@ -705,7 +712,7 @@ document.getElementById("ok").addEventListener("click", async () => {
   readyArchibaldWindow();
 
   try {
-    storeFormValues();
+    await storeFormValues();
     if(true)//document.getElementById("local").checked)
     {
       // Simply download a zip folder
@@ -754,46 +761,66 @@ document.getElementById("ok").addEventListener("click", async () => {
   setTimeout(() => {
     if(archiveCount > 0)
       document.getElementById("statusLabel").textContent = "Archivage terminé ! " + archiveCount + " messages déplacés.";
-    /*else
-      document.getElementById("statusLabel").textContent = "Aucun message à archiver.";*/
+    else
+      document.getElementById("statusLabel").textContent = "Aucun message à archiver.";
+
     archiveCount = 0;
   }, 200);
 });
 
+// Find a local account, given it's pretty name
+async function getLocalAccountByName(name)
+{
+  const accounts = await browser.accounts.list();
+  const localAccounts = accounts.filter(acct => acct.type === "local");
+  for (const account of localAccounts) {
+    if(account.name == name)
+    {
+      archibaldLog("Found matching local account: "+account.name);
+      return account;
+    }
+  }
+  return null;
+}
+
+// Return the local account corresponding to the given account
 async function getAccountLocalAccount(originalAccount)
 {
   try
   {
-    const useDefaultLocalAccount = document.getElementById("useDefaultLocalFolder").checked;
-    if(useDefaultLocalAccount)
+    const localAccountName = "Local - " + originalAccount.name;
+    const useCustomLocalFolder = document.getElementById("useCustomLocalFolder").checked;
+    if(!useCustomLocalFolder)
     {
       // Just use the default local account
+      archibaldLog("Getting default local account");
       return getDefaultLocalAccount();
     }
     else
     {
       // Search the local account corresponding to the originalAccount name
-      const accounts = await browser.accounts.list();
-      const localAccounts = accounts.filter(acct => acct.type === "local");
-      for (const account of localAccounts) {
-        if(account.name == originalAccount.name + " - Local")
-        {
-          archibaldLog("Found matching local account: "+account.name);
-          return account;
-        }
-      }
+      archibaldLog("Searching local account for: "+originalAccount.name);
+      let localAccount = await getLocalAccountByName("Local - " + originalAccount.name);
+      if(localAccount)
+        return localAccount;
 
       // We didn't find it ! Let's create it
+      archibaldLog("No local account found for this account, let's create it.");
       const path = document.getElementById("localFolderPath").value;
       if(!path)
       {
+        // Let's check if the User did everything right, just in case
         archibaldLog("User needs to choose a target folder");
         alert("Choisissez un dossier local");
         return null;
       }
-      const newLocalAccountId = await messenger.archibaldApi.createCustomLocalFolder(originalAccount.id, path);
-      archibaldLog("Created local account "+newLocalAccountId);
-      return accounts.find(acct => acct.id === newLocalAccountId);
+      const newLocalAccountName = await messenger.archibaldApi.createCustomLocalFolder(originalAccount.id, path);
+      archibaldLog("Created local account "+newLocalAccountName);
+
+      // We created the account without issue, find it and return it
+      localAccount = getLocalAccountByName(localAccountName);
+      if(localAccount)
+        return localAccount;
     }
   }
   catch(ex)
@@ -826,37 +853,88 @@ async function getDefaultLocalAccount()
   }
 }
 
+// These are helpers to generate a readable string of account,path|account,path to save / load in archibald form
+function parsePairs(str) {
+  return (str || "")
+    .split("|")
+    .filter(Boolean)
+    .map(entry => {
+      const [id, ...rest] = entry.split(",");
+      return [id, rest.join(",")]; // keep commas inside path if any
+    });
+}
+function upsertPair(str, id, path) {
+  const pairs = parsePairs(str);
+  let found = false;
+  for (let i = 0; i < pairs.length; i++) {
+    if (pairs[i][0] === id) {
+      pairs[i][1] = path;
+      found = true;
+      break;
+    }
+  }
+  if (!found) pairs.push([id, path]);
+  return pairs.map(([i, p]) => `${i},${p}`).join("|");
+}
+function findPath(str, id) {
+  for (const [i, p] of parsePairs(str)) {
+    if (i === id) return p;
+  }
+  return "";
+}
+
 // Store form values in local storage
-function storeFormValues()
-{
-  browser.storage.local.set({ ["days"]: document.getElementById("days").value });
-  browser.storage.local.set({ ["useDefaultLocalFolder"]: document.getElementById("useDefaultLocalFolder").checked });
-  browser.storage.local.set({ ["localFolderPath"]: document.getElementById("localFolderPath").value });
+async function storeFormValues() {
+  await browser.storage.local.set({
+    days: document.getElementById("days").value,
+    useCustomLocalFolder: document.getElementById("useCustomLocalFolder").checked,
+  });
+
+  // Get the old string: "accountid,path|accountid,path|..."
+  const stored = await browser.storage.local.get("localFolderPaths");
+  const oldLocalFolderPaths = stored.localFolderPaths || ""; // NOTE: key is 'localFolderPaths'
+
+  // Get the selected accountId
+  const dropdown = document.getElementById("mailboxDropdown");
+  const selectedOption = dropdown.options[dropdown.selectedIndex];
+  const accountId = JSON.parse(selectedOption.value).accountId;
+
+  // And the path to save
+  const localFolderPath = document.getElementById("localFolderPath").value;
+
+  // Build the new string with this account's path upserted
+  const newLocalFolderPaths = upsertPair(oldLocalFolderPaths, accountId, localFolderPath);
+
+  // Save the new string of accountid/paths
+  await browser.storage.local.set({ localFolderPaths: newLocalFolderPaths });
+
+  archibaldLog("Saved form values with local paths: "+newLocalFolderPaths);
 }
 
 // Restore the Archibald form from local storage
-async function restoreFormFromLocalStorage()
-{
-  try
-  {
+async function restoreFormFromLocalStorage() {
+  try {
     // Local archiving checkbox (checked by default)
-    const useDefaultLocalFolder = (await browser.storage.local.get("useDefaultLocalFolder")).useDefaultLocalFolder;
-    document.getElementById("useDefaultLocalFolder").checked = (useDefaultLocalFolder === undefined || useDefaultLocalFolder === null) ? true : !!useDefaultLocalFolder;
+    const { useCustomLocalFolder } = await browser.storage.local.get("useCustomLocalFolder");
+    document.getElementById("useCustomLocalFolder").checked = (useCustomLocalFolder === undefined || useCustomLocalFolder === null) ? false : !!useCustomLocalFolder;
 
-    // Local folder path
-    const localFolderPath = (await browser.storage.local.get("localFolderPath")).localFolderPath;
+    // Get the selected accountId
+    const dropdown = document.getElementById("mailboxDropdown");
+    const selectedOption = dropdown.options[dropdown.selectedIndex];
+    const accountId = JSON.parse(selectedOption.value).accountId;
+
+    // Get the string of localFolderPaths and extract the path for the selected accountId
+    const { localFolderPaths } = await browser.storage.local.get("localFolderPaths");
+    const localFolderPath = findPath(localFolderPaths || "", accountId);
     document.getElementById("localFolderPath").value = localFolderPath ?? "";
 
     // Day count value (365 by default)
-    const days = (await browser.storage.local.get("days")).days;
+    const { days } = await browser.storage.local.get("days");
     document.getElementById("days").value = days ?? "365";
 
     // Call this to show/hide localFolderDiv
-    useDefaultFolderChanged();
-  }
-  catch
-  {
-
+    useCustomLocalFolderChanged();
+  } catch {
   }
 }
 
@@ -886,7 +964,7 @@ function resetArchibaldWindow()
 
 // Close the window on cancel
 document.getElementById("cancel").addEventListener("click", async () => {
-    storeFormValues();
+    //await storeFormValues();
     console.log("[Archibald] - Closing main window");
     window.close();
     pendingMode = false;

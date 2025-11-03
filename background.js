@@ -17,7 +17,7 @@ function archibaldInit()
 
 function messageListener(messages) {
   console.log("Background received data from implementation:", messages);
-  openPopupWithData(messages);
+  openArchibaldWithData(messages);
 }
 
 // Lets be SURE by ANY mean that we are awake and listening
@@ -42,7 +42,7 @@ browser.runtime.onInstalled.addListener(() => archibaldInit());
 archibaldInit();
 setInterval(() => { archibaldInit(); }, 10000);
 
-async function openPopupWithData(messages) {
+async function openArchibaldWithData(messages) {
   // Store the data somewhere the popup can read
   chrome.runtime.onMessage.addListener(function listener(request, sender, sendResponse) {
     if (request.type === "getSafeMessages") {

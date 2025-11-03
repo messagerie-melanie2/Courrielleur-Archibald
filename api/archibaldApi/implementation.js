@@ -6,7 +6,9 @@ const { ExtensionCommon } = ChromeUtils.importESModule("resource://gre/modules/E
 
 // Use Window Mediator via XPCOM (avoids Services import)
 const WM = Cc["@mozilla.org/appshell/window-mediator;1"].getService(Ci.nsIWindowMediator);
+const F = Ci.nsMsgFolderFlags;
 
+// ================================= HELPERS ============================================
 function getTopChromeWindow() {
   return WM.getMostRecentWindow("mail:3pane") || WM.getMostRecentWindow(null);
 }
@@ -41,85 +43,137 @@ function sanitizeName(str) {
   return s || "x-local";
 }
 
-async function fixupSubfolder(parentName, folderName, removeFileFolder, storeID)
-{
-  var filespec = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
-  var rf = `${parentName}\\${folderName}`
-
-  filespec.initWithPath(parentName);
-  filespec.append(folderName);
-
-  if (removeFileFolder) {
-      let fullPath = PathUtils.join(parentName, folderName);
-      if (await IOUtils.exists(fullPath)) {
-          await IOUtils.remove(fullPath);
-          return;
-      }
-  }
-
-  // We need to tweak subfolders differently for storage type
-  // mbox - remove local directory, create empty mail file
-  // maildir - create directory
-
-  if (storeID !== "@mozilla.org/msgstore/maildirstore;1") {
-      //eu.philoux.localfolder.LocalFolderTrace(`removing file folder: ${rf}`);
-      try {
-          filespec.remove(true);
-          //eu.philoux.localfolder.LocalFolderTrace(`fixupSubfolder - removed folder`);
-      } catch (error) {
-          //eu.philoux.localfolder.LocalFolderTrace(`no folder found removing file folder: ${rf}`);
-      }
-  }
-
-  if (storeID === "@mozilla.org/msgstore/maildirstore;1") {
-      filespec.create(Ci.nsIFile.DIRECTORY_TYPE, 0755);
-      //eu.philoux.localfolder.LocalFolderTrace(`fixupSubfolder done - CREATED DIRECTORY`);
-
-  } else {
-      filespec.create(Ci.nsIFile.NORMAL_FILE_TYPE, 0644);
-      //eu.philoux.localfolder.LocalFolderTrace(`fixupSubfolder done - create file`);
-  }
+// Minimal async sleep that works in Thunderbird’s chrome context
+function sleep(ms) {
+  return new Promise(resolve => {
+    const timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
+    timer.init(() => resolve(), ms, Ci.nsITimer.TYPE_ONE_SHOT);
+  });
 }
 
-async function addSpecialFolders(aParentFolder, aParentFolderPath)
+async function ensureSpecialSubfolder(parent, name, flag) {
+  try { parent.createSubfolder(name, null); } catch (_) {}
+  let f = null;
+  for (let i = 0; i < 10 && !f; i++) {
+    try { f = parent.getChildNamed(name); } catch (_) {}
+    if (!f) {
+      try { parent.updateFolderWithListener(null, null); } catch (_) {}
+      await sleep(50); // yield so TB can process folder creation
+    }
+  }
+  if (!f) return;
+  try { f = f.QueryInterface(Ci.nsIMsgFolder); } catch (_) {}
+  try { f.setFlag ? f.setFlag(flag) : (f.flags |= flag); } catch (_) {}
+  try { if (f instanceof Ci.nsIMsgLocalMailFolder) f.createStorageIfMissing(null); } catch (_) {}
+  try { f.updateFolderWithListener(null, null); } catch (_) {}
+}
+
+async function ensureSubfolder(parent, name)
 {
-  let addFolderElements = document.querySelectorAll("[id^='add_folder_']");
+  // Create (ok if it already exists)
+  try { parent.createSubfolder(name, null); } catch (_) {}
 
-  var bundle = Services.strings.createBundle("chrome://messenger/locale/messenger.properties");
-  msgWindow = Cc["@mozilla.org/messenger/msgwindow;1"].createInstance(Ci.nsIMsgWindow);
+  // Find it (allow a few cycles for TB to register the new child)
+  let f = null;
+  for (let i = 0; i < 10 && !f; i++) {
+    try { f = parent.getChildNamed(name); } catch (_) {}
+    if (!f) {
+      try { parent.updateFolderWithListener(null, null); } catch (_) {}
+      await sleep(50); // yield so TB can process folder creation
+    }
+  }
+  if (!f) return null;
 
-  for (let index = 0; index < addFolderElements.length; index++) {
-    const element = addFolderElements[index];
-    if (!!element.checked) {
-        // Add special folder
-        const l = element.getAttribute("SpecialFolder");
-        const storeID = aParentFolder.server.getStringValue("storeContractID");
+  // Make it usable immediately
+  try { f = f.QueryInterface(Ci.nsIMsgFolder); } catch (_) {}
+  try {
+    if (f instanceof Ci.nsIMsgLocalMailFolder) {
+      f.createStorageIfMissing(null); // ensure mbox + .msf exist
+    }
+  } catch (_) {}
+  try { f.updateFolderWithListener(null, null); } catch (_) {}
 
-        var ll = specialFolders[l].localizedFolderName;
-        //eu.philoux.localfolder.LocalFolderTrace('Add special folder: ' + l + '  ' + storeID + "   " + ll);
+  return f; // nsIMsgFolder, ready for moves
+}
 
-        // Trash and unsent messages folders are added at account creation
-        if (l !== "Trash" && l !== "Outbox" && !existingSpecialFolders.includes(l)) {
 
-            aParentFolder.createSubfolder(l, msgWindow);
+async function indexAllFolders(folder) {
+  try { folder.updateFolderWithListener(null, null); } catch (_) {}
+  const s = folder.subFolders;
+  if (!s) return;
 
-            // eu.philoux.localfolder.LocalFolderTrace("Added subfolder : " + l);
-            var localizedFolderString = bundle.GetStringFromName(ll);
-            var e = aParentFolder.subFolders;
-
-            try {
-                aParentFolder.getChildNamed(localizedFolderString).flags = eu.philoux.localfolder.specialFolders[l].flags;
-                // eu.philoux.localfolder.LocalFolderTrace("child " + localizedFolderString);
-            } catch (error) {
-                // eu.philoux.localfolder.LocalFolderTrace("child not found TryEnglish");
-                aParentFolder.getChildNamed(l).flags = eu.philoux.localfolder.specialFolders[l].flags;
-            }
-
-            await fixupSubfolder(aParentFolderPath, l, false, storeID);
-        }
+  if (typeof s.hasMoreElements === "function") {
+    while (s.hasMoreElements()) {
+      let sf = s.getNext();
+      try { sf = sf.QueryInterface(Ci.nsIMsgFolder); } catch (_) {}
+      await indexAllFolders(sf);
+    }
+  } else if (Symbol.iterator in Object(s)) {
+    for (let sf of s) {
+      try { sf = sf.QueryInterface(Ci.nsIMsgFolder); } catch (_) {}
+      await indexAllFolders(sf);
     }
   }
 }
+
+function diagLocalFolder(nsFolder) {
+  nsFolder = nsFolder.QueryInterface(Ci.nsIMsgFolder);
+  console.log("dest URI:", nsFolder.URI, "canFileMessages:", nsFolder.canFileMessages);
+
+  try {
+    const local = nsFolder.QueryInterface(Ci.nsIMsgLocalMailFolder);
+    const file = local.filePath; // nsIFile: the mbox file expected on disk
+    console.log("mbox path:", file.path, "exists:", file.exists(), "isDir:", file.isDirectory(), "writable:", file.isWritable());
+  } catch (e) {
+    console.warn("Not a local mail folder?", e);
+  }
+
+  try { void nsFolder.msgDatabase; console.log("msgDatabase ok"); } catch (e) {
+    console.warn("msgDatabase open failed:", e);
+  }
+}
+
+async function repairMboxLayout(nsFolder /* nsIMsgFolder */) {
+  nsFolder = nsFolder.QueryInterface(Ci.nsIMsgFolder);
+  const local = nsFolder.QueryInterface(Ci.nsIMsgLocalMailFolder);
+
+  // Paths
+  const mbox = local.filePath; // C:\...\Archives   (should be a FILE)
+  const parentDir = mbox.parent;
+  const sbd = mbox.clone(); sbd.leafName = mbox.leafName + ".sbd";
+
+  // If the mbox "file" is actually a DIRECTORY, convert layout:
+  if (mbox.exists() && mbox.isDirectory()) {
+    // If Archives.sbd doesn't exist yet, turn the wrong dir into the .sbd
+    if (!sbd.exists()) {
+      mbox.moveTo(parentDir, mbox.leafName + ".sbd"); // Archives -> Archives.sbd
+    } else {
+      // Both Archives (dir) and Archives.sbd exist: pick one to keep
+      // Move content into Archives.sbd and remove stray Archives dir
+      const it = mbox.directoryEntries;
+      while (it?.hasMoreElements && it.hasMoreElements()) {
+        const f = it.getNext().QueryInterface(Ci.nsIFile);
+        f.moveTo(sbd, f.leafName);
+      }
+      mbox.remove(true);
+    }
+  }
+
+  // Ensure the mbox FILE exists (empty is fine)
+  if (!mbox.exists()) {
+    // createStorageIfMissing will create the mbox + .msf
+    local.createStorageIfMissing(null);
+  }
+
+  // Make sure .sbd exists if there are/will be children
+  if (!sbd.exists()) {
+    try { sbd.create(Ci.nsIFile.DIRECTORY_TYPE, 0o700); } catch (_) {}
+  }
+
+  try { nsFolder.updateFolderWithListener(null, null); } catch (_) {}
+  try { void nsFolder.msgDatabase; } catch (_) {}
+}
+// ================================= FIN HELPERS ============================================
 
 this.archibaldApi = class extends ExtensionAPI {
   getAPI(context) {
@@ -219,35 +273,93 @@ this.archibaldApi = class extends ExtensionAPI {
         // ---------------------- CREATE LOCAL ACCOUNT -------------------------
         async createCustomLocalFolder(accountId, path)
         {
+          //console.log("createCustomLocalFolder");
           const originalAccount = getAccountById(accountId);
           let tmpName = sanitizeName(originalAccount.incomingServer.prettyName);
-          console.log(tmpName);
-          var srv = MailServices.accounts.createIncomingServer("nobody", tmpName, "none");
 
+          //console.log("create incoming server");
+          let srv = MailServices.accounts.createIncomingServer("nobody", tmpName, "none");
           srv = srv.QueryInterface(Ci.nsIMsgIncomingServer);
 
-          var filespec = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+          //console.log("init with path " + path);
+          const filespec = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
           filespec.initWithPath(path);
-          srv.prettyName = originalAccount.incomingServer.prettyName + " - Local";
+
+          //console.log("ensure the base directory exists and is writable");
+          if (!filespec.exists()) {
+            try { filespec.create(Ci.nsIFile.DIRECTORY_TYPE, 0o700); } catch (e) {
+              console.error("Cannot create base directory:", path, e);
+              throw e;
+            }
+          }
+          if (!filespec.isDirectory() || !filespec.isWritable()) {
+            throw new Error("Base path is not a writable directory: " + path);
+          }
+
+          //console.log("set pretty name " + originalAccount.incomingServer.prettyName + " - Local");
+          srv.prettyName = "Local - " + originalAccount.incomingServer.prettyName;
           srv.localPath = filespec;
 
-          let defaultStoreID = "@mozilla.org/msgstore/berkeleystore;1";
+          // mbox store (Berkeley)
+          //console.log("set store contract id");
+          const defaultStoreID = "@mozilla.org/msgstore/berkeleystore;1";
           srv.setStringValue("storeContractID", defaultStoreID);
           srv.emptyTrashOnExit = true;
 
-          // maildir will not setup without Trash & Unsent Messages being removed, mbox op is non issue
+          // Clean leftovers
+          //console.log("clean folders");
           await IOUtils.remove(PathUtils.join(path, "Trash"), { ignoreAbsent: true, recursive: true });
           await IOUtils.remove(PathUtils.join(path, "Unsent Messages"), { ignoreAbsent: true, recursive: true });
 
+          // Create the account
+          //console.log("create account");
           srv.valid = false;
-
-          var account = MailServices.accounts.createAccount();
+          const account = MailServices.accounts.createAccount();
           account.incomingServer = srv;
           srv.valid = true;
+
+          // Fix/ensure special folders exist and are usable on disk (replaces fixupSubfolder/addSpecialFolders)
+          //console.log("create special folders");
+          const root = srv.rootMsgFolder.QueryInterface(Ci.nsIMsgFolder);
+          await ensureSpecialSubfolder(root, "Trash",           F.Trash);
+          await ensureSpecialSubfolder(root, "Unsent Messages", F.Queue);
+
+          // Proactively create "Archives" parent (Berkeley needs mbox file + .sbd for children)
+          const archives = await ensureSubfolder(root, "Archives");
+          try { archives.setFlag ? archives.setFlag(F.Archive) : (archives.flags |= F.Archive); } catch (_) {}
+
+          // Repair wrong on-disk shape if needed
+          await repairMboxLayout(archives);
+
+          // One more pass to discover everything
+          try { root.updateFolderWithListener(null, null); } catch (_) {}
+          await sleep(50);
+
+          // Import/index existing on-disk structure so moves work immediately (replaces addExistingFolders)
+          //console.log("index folders");
+          await indexAllFolders(root);
+
+          //console.log("return created account id");*/
+          // Persist to prefs/accounts
+          MailServices.accounts.saveAccountInfo();
+
+          // As crazy as it reads, this refresh thunderbird's folder tree
           account.incomingServer = account.incomingServer;
 
-          return account.id;
-      },
+          //console("quick diagnostics (keep while testing)");
+          try {
+            console.log("Root URI:", root.URI, "canFile:", root.canFileMessages);
+            console.log("Archives canFile:", archives.canFileMessages);
+            try {
+              const local = archives.QueryInterface(Ci.nsIMsgLocalMailFolder);
+              const file  = local.filePath;
+              console.log("Archives mbox:", file.path, "exists:", file.exists(), "isDir:", file.isDirectory(), "writable:", file.isWritable());
+            } catch(e) {}
+          } catch(e) { console.warn("Diag failed:", e); }
+
+          // Return the XPCOM account key (e.g. "account7")
+          return srv.prettyName;
+        },
         // ---------------------- CREATE LOCAL ACCOUNT (fin) -------------------------
 
 
