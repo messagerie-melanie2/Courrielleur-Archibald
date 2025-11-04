@@ -363,30 +363,37 @@ this.archibaldApi = class extends ExtensionAPI {
         // ---------------------- CREATE LOCAL ACCOUNT (fin) -------------------------
 
         // ---------------------- REMOVE LOCAL ACCOUNT -------------------------------
-        async removeCustomLocalFolder(accountId) {
+        async removeCustomLocalFolder(accountId)
+        {
           const account = MailServices.accounts.getAccount(accountId);
-          if (!account) {
+          if (!account)
+          {
             console.warn("No account found for key:", accountId);
             return;
           }
 
           const server = account.incomingServer;
           let localPath;
-          try {
+          try
+          {
             localPath = server.localPath; // nsIFile
-          } catch (e) {
+          }
+          catch (e)
+          {
             localPath = null;
           }
 
           // This removes the account from Thunderbird and also removes the incoming server.
           // removeFiles = true tries to delete messages / localPath on disk.
+          const removeFiles = false;
           MailServices.accounts.removeAccount(account, removeFiles);
 
           // Persist to prefs
           MailServices.accounts.saveAccountInfo();
 
           // Optional extra cleanup if you want to be absolutely sure the directory is gone:
-          if (removeFiles && localPath && localPath.exists()) {
+          if (removeFiles && localPath && localPath.exists())
+          {
             try {
               await IOUtils.remove(localPath.path, { recursive: true });
             } catch (e) {
@@ -394,7 +401,7 @@ this.archibaldApi = class extends ExtensionAPI {
             }
           }
 
-          console.log("Custom local account removed:", accountKey);
+          console.log("Custom local account removed:", accountId);
         },
         // ---------------------- REMOVE LOCAL ACCOUNT -------------------------------
 
