@@ -63,10 +63,24 @@
       {
         "name": "createCustomLocalFolder",
         "type": "function",
-        "description": "Create (or ensure) a custom local folder for the given account at the specified path.",
+        "description": "Create (or ensure) a custom local folder account for the given account at the specified path. Returns the created account key (e.g. 'account7').",
         "parameters": [
           { "name": "accountId", "type": "string" },
           { "name": "path", "type": "string" }
+        ],
+        "async": true,
+        "returns": { "type": "any" }
+      },
+      {
+        "name": "removeCustomLocalFolder",
+        "type": "function",
+        "description": "Remove a previously created custom local folder account. Optionally deletes its on-disk data.",
+        "parameters": [
+          {
+            "name": "accountKey",
+            "type": "string",
+            "description": "The account key of the custom local account to remove (e.g. 'account7')."
+          }
         ],
         "async": true,
         "returns": { "type": "any" }

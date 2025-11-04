@@ -59,13 +59,83 @@ body {
     border-radius: 4px;
     border: 1px solid #ccc;
     background-color: #e0e0e0;
+    position: relative;
+  }
+
+  button.remove {
+    background-color: #dc3545;
+    border-color: #721c24;
+    color: #ffffff;
+  }
+
+  button.remove:hover {
+    background-color: #a71c2a;
+    border-color: #721c24;
+  }
+
+  button.remove:active {
+    background-color: #721c24;
+    border-color: #721c24;
+  }
+
+  /* Tooltip text below the button */
+  /* Tooltip under the button, left-aligned with it */
+  button::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: 125%;
+    left: 0;
+    transform: none;
+
+    background-color: #00000077;
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+
+    display: block;
+    width: 220px;
+    white-space: normal;
+    overflow-wrap: break-word;
+    text-align: left;
+
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease-in-out;
+  }
+
+  /* Small arrow above the tooltip, pointing up */
+  button::before {
+    content: "";
+    position: absolute;
+    top: 90%;
+    left: 50%;
+    transform: translateX(-50%);
+    border-width: 5px;
+    border-style: solid;
+    border-color: transparent transparent #00000077 transparent;
+    opacity: 0;
+    transition: opacity 0.15s ease-in-out;
+  }
+
+  /* Show tooltip on hover */
+  button:hover::after,
+  button:hover::before {
+    opacity: 1;
+  }
+
+  button[data-tooltip=""]::after,
+  button:not([data-tooltip])::after {
+    content: none !important;
   }
 
   button:hover {
     background-color: #d0d0d0;
   }
 
-  /* 🔒 Style for disabled button */
+  /* Style for disabled button */
   button:disabled {
     background-color: #999;
     color: #ccc;
@@ -74,7 +144,7 @@ body {
     opacity: 0.6; /* Optional for a faded effect */
   }
 
-  /* 🛑 Disable hover effect on disabled button */
+  /* Disable hover effect on disabled button */
   button:disabled:hover {
     background-color: #999; /* Prevent dark hover */
   }
