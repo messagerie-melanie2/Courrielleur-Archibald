@@ -278,7 +278,9 @@ this.archibaldApi = class extends ExtensionAPI {
           let tmpName = sanitizeName(originalAccount.incomingServer.prettyName);
 
           //console.log("create incoming server");
-          let srv = MailServices.accounts.createIncomingServer("nobody", tmpName, "none");
+          // Use a randomUser to prevent errors when creating multiple accounts
+          const randomUser = "user_" + Math.random().toString(36).slice(2, 10);
+          let srv = MailServices.accounts.createIncomingServer("randomUser", tmpName, "none");
           srv = srv.QueryInterface(Ci.nsIMsgIncomingServer);
 
           //console.log("init with path " + path);
