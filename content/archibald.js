@@ -178,9 +178,6 @@ async function localyArchivePendingMessages(messages, account, currentPath)
 {
   archibaldLog("Archiving pending messages");
   const sourceFolderName = decodeLegacyFolderName(messages[0].folderName);
-  const progressBar = document.getElementById("progressBar");
-  progressBar.max = messages.length;
-  progressBar.value = 0;
   let archiveCount = 0;
 
   // localFolderPath is like /Folder1/Sub1/Sub2
@@ -201,7 +198,6 @@ async function localyArchivePendingMessages(messages, account, currentPath)
       // Find the numeric ID from messageId to move it
       let webExtMessageId = messages.messages[0].id;
       await browser.messages.move([webExtMessageId], targetFolder.id);
-      progressBar.value += 1;
       archiveCount++;
     }
     else
@@ -681,14 +677,10 @@ async function getOrCreateSubfolder(baseDirHandle, name) {
   return await baseDirHandle.getDirectoryHandle(name, { create: true });
 }
 
-// Ok button
-document.getElementById("ok").addEventListener("click", async () => {
-  if(pendingMode)
-  {
-    document.getElementById("cancel").click();
-    return;
-  }
-  // Selected Account
+// Create localAccount tree using Archibald form but don't archive
+async function getAccountsReadyToArchive()
+{
+  // Get the selected account from the form
   const mailboxDropdown = document.getElementById("mailboxDropdown");
   const selectedMailbox = mailboxDropdown.options[mailboxDropdown.selectedIndex];
   const selectedAccountId = JSON.parse(selectedMailbox.value).accountId;
@@ -697,58 +689,101 @@ document.getElementById("ok").addEventListener("click", async () => {
   if (!account)
     throw new Error("Account not found.");
 
-  // Selected Folders and date
+  // Find the local account of this profile
+  const localAccount = await getAccountLocalAccount(account, true);
+  if(localAccount)
+  {
+    // Create folder hierarchy of selected account under found localAccount
+    createAccountLocalFolders(account, localAccount);
+  }
+}
+
+async function saveAndPrepare()
+{
+  // If the given path is different than the stored path, then we need to remove the previous local account first
+  const currentPath = document.getElementById("localFolderPath").value;
+  // Current account id
+  const dropdown = document.getElementById("mailboxDropdown");
+  const selectedOption = dropdown.options[dropdown.selectedIndex];
+  const accountId = JSON.parse(selectedOption.value).accountId;
+  // Per-account localFolderPath
+  const { localFolderPaths } = await browser.storage.local.get("localFolderPaths");
+  const oldPath = findPath(localFolderPaths || "", accountId);
+  if(oldPath && oldPath != currentPath)
+  {
+    // Remove old account bind to setup new one
+    await removeCustomLocalFolder();
+    // removeCustomLocalFolder is removing the path, lets just reset it
+    document.getElementById("localFolderPath").value = currentPath;
+  }
+
+  // Setup local folders
+  await getAccountsReadyToArchive();
+
+  // Save new form values
+  await storeFormValues();
+}
+
+// Save button
+document.getElementById("save").addEventListener("click", async () =>
+{;
+  // Disable form
+  readyArchibaldWindow();
+
+  // Save form, get local folders ready
+  await saveAndPrepare();
+
+  // Display confirm messages
+  const useCustomLocalFolder = document.getElementById("useCustomLocalFolder").checked;
+  if(!useCustomLocalFolder)
+    displayArchibaldMessage("Paramètres sauvegardés.");
+  else
+    displayArchibaldMessage("Paramètres sauvegardés et compte local mis à jour.");
+
+  // Enable form
+  resetArchibaldWindow();
+});
+
+// Boutton Archiver
+document.getElementById("archive").addEventListener("click", async () =>
+{
+  // Prepare window style, disable controls
+  readyArchibaldWindow();
+
+  // Save form, prepare local folders
+  await saveAndPrepare();
+
+  // Get the selected account from the form
+  const mailboxDropdown = document.getElementById("mailboxDropdown");
+  const selectedMailbox = mailboxDropdown.options[mailboxDropdown.selectedIndex];
+  const selectedAccountId = JSON.parse(selectedMailbox.value).accountId;
+  const accounts = await browser.accounts.list();
+  const account = accounts.find(acc => acc.id === selectedAccountId);
+  if (!account)
+    throw new Error("Account not found.");
+
+  //  Get the selected account folders and date from the form
   const storedFolders = await browser.storage.local.get(selectedAccountId);
   const storedFoldersForSelectedAccount = storedFolders[selectedAccountId];
   const selectedDate = document.getElementById("until");
 
-  // Prepare window style
-  const progressBar = document.getElementById("progressBar");
-  readyArchibaldWindow();
-
-  try {
-    await storeFormValues();
-    if(true)//document.getElementById("local").checked)
+  try
+  {
+    // Find the local account of this profile
+    const localAccount = await getAccountLocalAccount(account, true);
+    if(localAccount)
     {
-      // Simply download a zip folder
-      //downloadAsZip(storedFoldersForSelectedAccount, new Date(selectedDate.value));
-
-      // Find the local account of this profile
-      const localAccount = await getAccountLocalAccount(account, true);
-      if(localAccount)
+      for (const folder of storedFoldersForSelectedAccount)
       {
-        // Create folder hierarchy of selected account under found localAccount
-        createAccountLocalFolders(account, localAccount);
-
-        let i = 0;
-        for (const folder of storedFoldersForSelectedAccount) {
-          // For each folder, move the messages to it's corresponding folder
-          // Move messages to their corresponding local folder
-          archiveCount += await localyArchiveMessagesBeforeDate(folder, new Date(selectedDate.value), account, localAccount);
-
-          // Update progress bar
-          const progress = Math.round(((i + 1) / storedFoldersForSelectedAccount.length) * 100);
-          progressBar.value = progress;
-          i++;
-        }
-      }
-    }
-    else
-    {
-      // Archive using Thunderbird default logic
-      let i = 0;
-      for (const folder of storedFoldersForSelectedAccount) {
-        archiveCount += await archiveMessagesBeforeDate(folder, new Date(selectedDate.value));
-
-        // Update progress bar
-        const progress = Math.round(((i + 1) / storedFoldersForSelectedAccount.length) * 100);
-        progressBar.value = progress;
-        i++;
+        // For each folder, move the messages to it's corresponding folder
+        // Move messages to their corresponding local folder
+        archiveCount += await localyArchiveMessagesBeforeDate(folder, new Date(selectedDate.value), account, localAccount);
       }
     }
   }
-  catch (error) {
-    console.error("An error occurred: "+error.message);
+  catch (error)
+  {
+    console.error("[Archibald] - An error occurred: "+error.message);
   }
 
   // Reset window style
@@ -1016,10 +1051,10 @@ async function restoreFormFromLocalStorage() {
 // Prepare window for archiving
 function readyArchibaldWindow()
 {
-  // Show Progress Bar later if needed. Disable buttons
   const progressContainer = document.getElementById("progressContainer");
   progressContainer.style.display = "block";
-  document.getElementById("ok").disabled = true;
+  document.getElementById("save").disabled = true;
+  document.getElementById("archive").disabled = true;
   document.getElementById("cancel").disabled = true;
   document.getElementById("statusLabel").textContent = "Archivage en cours...";
 }
@@ -1029,12 +1064,9 @@ function resetArchibaldWindow()
 {
   // Hide Progress Bar and enable buttons
   document.getElementById("progressContainer").style.display = "none";
-  document.getElementById("progressBar").value = 0;
-  document.getElementById("ok").disabled = false;
+  document.getElementById("save").disabled = false;
+  document.getElementById("archive").disabled = false;
   document.getElementById("cancel").disabled = false;
-
-  if(pendingMode)
-    document.getElementById("ok").textContent = "Ok";
 }
 
 // Close the window on cancel

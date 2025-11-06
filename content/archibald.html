@@ -8,8 +8,10 @@
   <script src="archibald.js" defer></script>
 </head>
 <div id="progressContainer" style="display: none; margin-top: 20px;">
-  <label for="progressBar">Progression de l'archivage :</label>
-  <progress id="progressBar" value="0" max="100" style="width: 100%; height: 20px;"></progress>
+  <label for="progressBar">Traitement en cours...</label>
+  <div id="progressTrack">
+    <div id="progressBar"></div>
+  </div>
 </div>
 <body>
     <h1 style="margin-bottom: 4px;">Archibald</h1>
@@ -50,7 +52,7 @@
     <label for="localFolderPath">Chemin du dossier à utiliser :</label>
     <div style="display: flex; gap: 6px; align-items: center;">
       <input type="text" id="localFolderPath" readonly tabindex="-1" style="flex: 0.5; box-sizing: border-box; height: 32px; padding: 6px 8px; font-size: 14px; border: 1px solid gray;"/>
-      <button data-tooltip="Ouvre une fenêtre permettant de choisir un dossier dans lequel Archibald enregistera les archives. Vous pouvez utiliser cette fenêtre pour créer un dossier, mais assurez vous de sélectionner un dossier vide." id="btSelectNewLocalFolder" accesskey="b" style="width: 80px; height: 32px; padding: 0 10px;">
+      <button data-tooltip="Ouvre une fenêtre permettant de choisir un dossier dans lequel Archibald enregistera les archives. Vous pouvez utiliser cette fenêtre pour créer un dossier ou selectionner un dossier d'archive pre-existant." id="btSelectNewLocalFolder" accesskey="b" style="width: 80px; height: 32px; padding: 0 10px;">
         Parcourir…
       </button>
       <button data-tooltip="Supprime le lien vers ce dossier local. Cela supprimera le compte local de votre Courrielleur, mais conservera les fichiers sur votre ordinateur." class="remove" id="btRemoveCustomLocalFolder" accesskey="r" style="width:32px; height: 32px; padding: 0;">
@@ -60,13 +62,14 @@
   </div>
 
   <hr style="width:70%; margin-left: 0; margin-top: 20px;margin-bottom: 20px;">
-  <div class="buttons" style="width: calc(55% + 40px); display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+  <div class="buttons" style="width: 56%; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
     <div>
       <label id="versionLabel" style="font-size: 0.9em; color: #888;">v0.12</label>
     </div>
     <div style="display: flex; align-items: right; gap: 10px;">
       <label id="statusLabel" style="padding-top: 5px;"></label>
-      <button data-tooltip="Sauvegarde ces paramètres et lance l'Archivage." id="ok">Archiver</button>
+      <button data-tooltip="Sauvegarde ces paramètres." id="save">Sauvegarder</button>
+      <button data-tooltip="Sauvegarde ces paramètres et lance l'Archivage." id="archive">Archiver</button>
       <button data-tooltip="Quitte Archibald sans sauvegarder ces paramètres." id="cancel">Annuler</button>
     </div>
   </div>

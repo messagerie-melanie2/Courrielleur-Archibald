@@ -96,7 +96,6 @@ async function ensureSubfolder(parent, name)
   return f; // nsIMsgFolder, ready for moves
 }
 
-
 async function indexAllFolders(folder) {
   try { folder.updateFolderWithListener(null, null); } catch (_) {}
   const s = folder.subFolders;
@@ -172,6 +171,117 @@ async function repairMboxLayout(nsFolder /* nsIMsgFolder */) {
 
   try { nsFolder.updateFolderWithListener(null, null); } catch (_) {}
   try { void nsFolder.msgDatabase; } catch (_) {}
+}
+
+// Determine wether a chosen local folder already contains a maildir to import or not
+async function hasExistingMailStructure(dirFile)
+{
+  if (!dirFile.exists() || !dirFile.isDirectory())
+    return false;
+
+  const entries = dirFile.directoryEntries;
+  while (entries.hasMoreElements())
+  {
+    const entry = entries.getNext().QueryInterface(Ci.nsIFile);
+    const name  = entry.leafName;
+
+    // Skip hidden files, just to reduce noise
+    if (name.startsWith("."))
+      continue;
+
+    // Any non-.msf file is considered potential mail data (mbox, etc.)
+    if (entry.isFile())
+    {
+      if (!name.endsWith(".msf"))
+        return true;
+
+      continue;
+    }
+
+    // Any directory suggests existing structure (.sbd, maildir, etc.)
+    if (entry.isDirectory())
+      return true;
+  }
+
+  return false;
+}
+
+// Handle multiple store type while exploring existing local folders
+async function detectStoreType(dirFile)
+{
+  // Very simple heuristic:
+  // - If we see maildir-like "cur/new/tmp" directories anywhere -> maildir
+  // - Else -> Berkeley mbox
+  let sawMaildir = false;
+
+  const entries = dirFile.directoryEntries;
+  while (entries.hasMoreElements())
+  {
+    const entry = entries.getNext().QueryInterface(Ci.nsIFile);
+    if (!entry.isDirectory())
+      continue;
+
+    const name = entry.leafName;
+    if (name === "cur" || name === "new" || name === "tmp")
+    {
+      sawMaildir = true;
+      break;
+    }
+  }
+
+  if (sawMaildir)
+    return "@mozilla.org/msgstore/maildirstore;1";
+
+  return "@mozilla.org/msgstore/berkeleystore;1";
+}
+
+// Finds a subfolder of rootFolder by name, ignoring case (so it matches both Inbox and inbox, etc.).
+function getChildIgnoreCase(rootFolder, name)
+{
+  const wanted = name.toLowerCase();
+  const children = rootFolder.subFolders || [];
+
+  for (const folder of children)
+  {
+    if (folder.name.toLowerCase() === wanted)
+      return folder;
+  }
+  return null;
+}
+
+// Goes through the account’s top-level folders and assigns special flags (Inbox, Trash, Sent, etc.)
+async function autoFlagSpecialFolders(root)
+{
+  const SPECIALS = [
+    { name: "Inbox",           flag: F.Inbox },
+    { name: "Trash",           flag: F.Trash },
+    { name: "Sent",            flag: F.SentMail },
+    { name: "Sent Items",      flag: F.SentMail },
+    { name: "Drafts",          flag: F.Drafts },
+    { name: "Templates",       flag: F.Templates },
+    { name: "Archives",        flag: F.Archive },
+    { name: "Junk",            flag: F.Junk },
+    { name: "Unsent Messages", flag: F.Queue },
+  ];
+
+  for (const { name, flag } of SPECIALS)
+  {
+    const folder = getChildIgnoreCase(root, name);
+    if (!folder)
+      continue;
+
+    try
+    {
+      if (typeof folder.setFlag === "function")
+        folder.setFlag(flag);
+      else
+        folder.flags |= flag;
+    }
+    catch (e)
+    {
+      console.warn("Failed to set flag", flag, "on", name, e);
+    }
+  }
 }
 // ================================= FIN HELPERS ============================================
 
@@ -270,26 +380,25 @@ this.archibaldApi = class extends ExtensionAPI {
         },
         // ---------------------- PICK A PATH (fin) -------------------------
 
-        // ---------------------- CREATE LOCAL ACCOUNT -------------------------
+        // ---------------------- CREATE / IMPORT LOCAL ACCOUNT -------------------------
         async createCustomLocalFolder(accountId, path)
         {
-          //console.log("createCustomLocalFolder");
           const originalAccount = getAccountById(accountId);
           let tmpName = sanitizeName(originalAccount.incomingServer.prettyName);
 
-          //console.log("create incoming server");
           // Use a randomUser to prevent errors when creating multiple accounts
-          const randomUser = "user_" + Math.random().toString(36).slice(2, 10);
-          let srv = MailServices.accounts.createIncomingServer("randomUser", tmpName, "none");
+          const randomUser = accountId + "_" + Math.random().toString(36).slice(2, 10);
+          let srv = MailServices.accounts.createIncomingServer(randomUser, tmpName, "none");
           srv = srv.QueryInterface(Ci.nsIMsgIncomingServer);
 
-          //console.log("init with path " + path);
           const filespec = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
           filespec.initWithPath(path);
 
-          //console.log("ensure the base directory exists and is writable");
+          // Ensure the base directory exists and is writable
           if (!filespec.exists()) {
-            try { filespec.create(Ci.nsIFile.DIRECTORY_TYPE, 0o700); } catch (e) {
+            try {
+              filespec.create(Ci.nsIFile.DIRECTORY_TYPE, 0o700);
+            } catch (e) {
               console.error("Cannot create base directory:", path, e);
               throw e;
             }
@@ -298,71 +407,127 @@ this.archibaldApi = class extends ExtensionAPI {
             throw new Error("Base path is not a writable directory: " + path);
           }
 
-          //console.log("set pretty name " + originalAccount.incomingServer.prettyName + " - Local");
+          // NEW: detect whether this directory already contains mail-ish content
+          const hasExistingMail = await hasExistingMailStructure(filespec);
+
+          // Set name and localPath
           srv.prettyName = "Local - " + originalAccount.incomingServer.prettyName;
           srv.localPath = filespec;
 
-          // mbox store (Berkeley)
-          //console.log("set store contract id");
-          const defaultStoreID = "@mozilla.org/msgstore/berkeleystore;1";
+          // NEW: detect store type (or keep Berkeley if you know it's always mbox)
+          const defaultStoreID = await detectStoreType(filespec);
           srv.setStringValue("storeContractID", defaultStoreID);
+
           srv.emptyTrashOnExit = true;
 
-          // Clean leftovers
-          //console.log("clean folders");
-          await IOUtils.remove(PathUtils.join(path, "Trash"), { ignoreAbsent: true, recursive: true });
-          await IOUtils.remove(PathUtils.join(path, "Unsent Messages"), { ignoreAbsent: true, recursive: true });
+          // Only do the destructive cleanup on a *fresh* directory
+          if (!hasExistingMail) {
+            await IOUtils.remove(PathUtils.join(path, "Trash"), { ignoreAbsent: true, recursive: true });
+            await IOUtils.remove(PathUtils.join(path, "Unsent Messages"), { ignoreAbsent: true, recursive: true });
+          }
 
           // Create the account
-          //console.log("create account");
           srv.valid = false;
           const account = MailServices.accounts.createAccount();
           account.incomingServer = srv;
           srv.valid = true;
 
-          // Fix/ensure special folders exist and are usable on disk (replaces fixupSubfolder/addSpecialFolders)
-          //console.log("create special folders");
           const root = srv.rootMsgFolder.QueryInterface(Ci.nsIMsgFolder);
-          await ensureSpecialSubfolder(root, "Trash",           F.Trash);
-          await ensureSpecialSubfolder(root, "Unsent Messages", F.Queue);
 
-          // Proactively create "Archives" parent (Berkeley needs mbox file + .sbd for children)
-          const archives = await ensureSubfolder(root, "Archives");
-          try { archives.setFlag ? archives.setFlag(F.Archive) : (archives.flags |= F.Archive); } catch (_) {}
+          // This seems to be a fresh directory, let's create a local folders tree normaly
+          if (!hasExistingMail)
+          {
+            console.log("[Archibald] - No existing local folder found at location, creating repository from scratch.");
+            await ensureSpecialSubfolder(root, "Trash",           F.Trash);
+            await ensureSpecialSubfolder(root, "Unsent Messages", F.Queue);
 
-          // Repair wrong on-disk shape if needed
-          await repairMboxLayout(archives);
+            // Proactively create "Archives" parent (Berkeley needs mbox file + .sbd for children)
+            const archives = await ensureSubfolder(root, "Archives");
+            try { archives.setFlag ? archives.setFlag(F.Archive) : (archives.flags |= F.Archive); } catch (_) {}
 
-          // One more pass to discover everything
-          try { root.updateFolderWithListener(null, null); } catch (_) {}
-          await sleep(50);
+            // Repair wrong on-disk shape if needed
+            await repairMboxLayout(archives);
 
-          // Import/index existing on-disk structure so moves work immediately (replaces addExistingFolders)
-          //console.log("index folders");
-          await indexAllFolders(root);
+            // One more pass to discover everything
+            try { root.updateFolderWithListener(null, null); } catch (_) {}
+            await sleep(50);
 
-          //console.log("return created account id");*/
+            // Import/index existing on-disk structure so moves work immediately
+            await indexAllFolders(root);
+
+          }
+          // This seems to be an existing directory, let's try to import what's in there
+          else
+          {
+            console.log("[Archibald] - Found local folder at given location, starting importation.");
+            try
+            {
+              // Let Thunderbird discover all existing folders/files
+              if (typeof root.updateFolder === "function")
+              {
+                // nsIMsgFolder.updateFolder(nsIMsgWindow aWindow)
+                root.updateFolder(null);
+              }
+            }
+            catch (e)
+            {
+              console.warn("updateFolder failed:", e);
+            }
+            await sleep(100);
+
+            // Walk and index everything on disk (your existing helper)
+            await indexAllFolders(root);
+
+            // Try to detect and flag special folders that already exist
+            await autoFlagSpecialFolders(root);
+
+            // If there's an Archives folder already, make sure it's flagged + layout repaired
+            const archives = getChildIgnoreCase(root, "Archives");
+            if (archives)
+            {
+              try {
+                archives.setFlag ? archives.setFlag(F.Archive) : (archives.flags |= F.Archive);
+              }
+              catch (_) {}
+              try
+              {
+                await repairMboxLayout(archives);
+              }
+              catch (_) {}
+            }
+          }
+
           // Persist to prefs/accounts
           MailServices.accounts.saveAccountInfo();
 
-          // As crazy as it reads, this refresh thunderbird's folder tree
+          // Force Thunderbird to refresh the folder tree
           account.incomingServer = account.incomingServer;
 
-          //console("quick diagnostics (keep while testing)");
-          try {
-            console.log("Root URI:", root.URI, "canFile:", root.canFileMessages);
-            console.log("Archives canFile:", archives.canFileMessages);
-            try {
-              const local = archives.QueryInterface(Ci.nsIMsgLocalMailFolder);
-              const file  = local.filePath;
-              console.log("Archives mbox:", file.path, "exists:", file.exists(), "isDir:", file.isDirectory(), "writable:", file.isWritable());
-            } catch(e) {}
-          } catch(e) { console.warn("Diag failed:", e); }
+          // Diagnostics (optional)
+          try
+          {
+            console.log("[Archibald] - Diag root URI:", root.URI, "canFile:", root.canFileMessages);
+            const archives = getChildIgnoreCase(root, "Archives");
+            if (archives)
+            {
+              console.log("[Archibald] - Archives canFile:", archives.canFileMessages);
+              try
+              {
+                const local = archives.QueryInterface(Ci.nsIMsgLocalMailFolder);
+                const file  = local.filePath;
+                console.log("[Archibald] - Archives mbox:", file.path,
+                            "exists:", file.exists(),
+                            "isDir:", file.isDirectory(),
+                            "writable:", file.isWritable());
+              }
+              catch(e) {}
+            }
+          }
+          catch(e) { console.warn("[Archibald] - Diag failed:", e); }
 
-          // Return the XPCOM account key (e.g. "account7")
           return srv.prettyName;
         },
-        // ---------------------- CREATE LOCAL ACCOUNT (fin) -------------------------
+        // ---------------------- CREATE / IMPORT LOCAL ACCOUNT (fin) -------------------------
 
         // ---------------------- REMOVE LOCAL ACCOUNT -------------------------------
         async removeCustomLocalFolder(accountId)
@@ -403,7 +568,7 @@ this.archibaldApi = class extends ExtensionAPI {
             }
           }
 
-          console.log("Custom local account removed:", accountId);
+          console.log("[Archibald] - Custom local account removed:", accountId);
         },
         // ---------------------- REMOVE LOCAL ACCOUNT -------------------------------
 

@@ -87,7 +87,9 @@ body {
     left: 0;
     transform: none;
 
-    background-color: #00000077;
+    background-color: #000000bb;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     color: #fff;
     padding: 4px 8px;
     border-radius: 4px;
@@ -115,7 +117,7 @@ body {
     transform: translateX(-50%);
     border-width: 5px;
     border-style: solid;
-    border-color: transparent transparent #00000077 transparent;
+    border-color: transparent transparent #000000bb transparent;
     opacity: 0;
     transition: opacity 0.15s ease-in-out;
   }
@@ -149,10 +151,10 @@ body {
     background-color: #999; /* Prevent dark hover */
   }
 
-  #ok{
+  #archive,#save{
     background-color: #0078D7;
   }
-  #ok:hover{
+  #archive:hover,#save:hover{
     background-color: #0060AC;
   }
 
@@ -221,6 +223,30 @@ body {
     background-color: #757575;
     transition: 0.4s;
     border-radius: 24px;
+  }
+
+  #progressTrack {
+    position: relative;
+    width: 70%;
+    height: 4px;
+    background: #e0e0e0;
+    border-color: #000;
+    overflow: hidden;
+    border-radius: 2px;
+    margin-top: 8px;
+  }
+
+  #progressBar {
+    position: absolute;
+    width: 40%;
+    height: 100%;
+    background: #0078D7;
+    animation: roll 1s linear infinite;
+  }
+
+  @keyframes roll {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(250%); }
   }
 
   /* The slider circle */
