@@ -47,7 +47,8 @@ archibaldInit();
 setInterval(() => { archibaldInit(); }, 10000);
 
 // Opens Archibald in a tab, passing through a Thunderbird archive request
-async function openArchibaldWithData(messages) {
+async function openArchibaldWithData(messages)
+{
   await browser.storage.local.set({ "thunderbirdRequest": messages });
   await browser.runtime.openOptionsPage();
 }
