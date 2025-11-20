@@ -9,29 +9,34 @@ const WM = Cc["@mozilla.org/appshell/window-mediator;1"].getService(Ci.nsIWindow
 const F = Ci.nsMsgFolderFlags;
 
 // ================================= HELPERS ============================================
-function getTopChromeWindow() {
+function getTopChromeWindow()
+{
   return WM.getMostRecentWindow("mail:3pane") || WM.getMostRecentWindow(null);
 }
 
-function initPickerWithParent(picker, parentWin, title, modeConst) {
+function initPickerWithParent(picker, parentWin, title, modeConst)
+{
   const bc = parentWin?.browsingContext;
   try {
     if (bc) { picker.init(bc, title, modeConst); return; }
-  } catch (_) {}
+  }
+  catch (_) {}
   picker.init(parentWin, title, modeConst);
 }
 
-function getAccountById(accountId) {
+function getAccountById(accountId)
+{
   // MailServices.accounts.accounts is an nsIArray of nsIMsgAccount
-  for (const account of MailServices.accounts.accounts) {
-    if (account.key === accountId) {
+  for (const account of MailServices.accounts.accounts)
+  {
+    if (account.key === accountId)
       return account;
-    }
   }
   return null;
 }
 
-function sanitizeName(str) {
+function sanitizeName(str)
+{
   let s = String(str || "").normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // strip accents
   // allow only a-z, 0-9, hyphen, dot; turn everything else into hyphen
   s = s.replace(/[^a-zA-Z0-9.-]+/g, "-")
@@ -44,7 +49,8 @@ function sanitizeName(str) {
 }
 
 // Minimal async sleep that works in Thunderbird’s chrome context
-function sleep(ms) {
+function sleep(ms)
+{
   return new Promise(resolve => {
     const timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
     timer.init(() => resolve(), ms, Ci.nsITimer.TYPE_ONE_SHOT);
@@ -55,14 +61,19 @@ async function ensureSpecialSubfolder(parent, name, flag)
 {
   try { parent.createSubfolder(name, null); } catch (_) {}
   let f = null;
-  for (let i = 0; i < 10 && !f; i++) {
+  for (let i = 0; i < 10 && !f; i++)
+  {
     try { f = parent.getChildNamed(name); } catch (_) {}
-    if (!f) {
+    if (!f)
+    {
       try { parent.updateFolderWithListener(null, null); } catch (_) {}
       await sleep(50); // yield so TB can process folder creation
     }
   }
-  if (!f) return;
+
+  if (!f)
+    return;
+
   try { f = f.QueryInterface(Ci.nsIMsgFolder); } catch (_) {}
   try { f.setFlag ? f.setFlag(flag) : (f.flags |= flag); } catch (_) {}
   try { if (f instanceof Ci.nsIMsgLocalMailFolder) f.createStorageIfMissing(null); } catch (_) {}
@@ -76,9 +87,11 @@ async function ensureSubfolder(parent, name)
 
   // Find it (allow a few cycles for TB to register the new child)
   let f = null;
-  for (let i = 0; i < 10 && !f; i++) {
+  for (let i = 0; i < 10 && !f; i++)
+  {
     try { f = parent.getChildNamed(name); } catch (_) {}
-    if (!f) {
+    if (!f)
+    {
       try { parent.updateFolderWithListener(null, null); } catch (_) {}
       await sleep(50); // yield so TB can process folder creation
     }
@@ -87,7 +100,8 @@ async function ensureSubfolder(parent, name)
 
   // Make it usable immediately
   try { f = f.QueryInterface(Ci.nsIMsgFolder); } catch (_) {}
-  try {
+  try
+  {
     if (f instanceof Ci.nsIMsgLocalMailFolder) {
       f.createStorageIfMissing(null); // ensure mbox + .msf exist
     }
@@ -97,41 +111,52 @@ async function ensureSubfolder(parent, name)
   return f; // nsIMsgFolder, ready for moves
 }
 
-async function rebuildFolderDBs(folder) {
+async function rebuildFolderDBs(folder)
+{
   //console.log("[Archibald] - Rebuilding DB for:", folder.name);
-
-  try {
+  try
+  {
     const local = folder.QueryInterface(Ci.nsIMsgLocalMailFolder);
-    if (typeof local.forceDBClosed === "function") {
+    if (typeof local.forceDBClosed === "function")
       local.forceDBClosed();
-    }
-  } catch (e) {
+  }
+  catch (e)
+  {
     // Not a local folder or forceDBClosed not exposed – ignore
   }
 
-  try {
-    if (typeof folder.updateFolderWithListener === "function") {
+  try
+  {
+    if (typeof folder.updateFolderWithListener === "function")
       folder.updateFolderWithListener(null, null);
-    } else if (typeof folder.updateFolder === "function") {
+
+    else if (typeof folder.updateFolder === "function")
       folder.updateFolder(null);
-    }
-  } catch (e) {
+  }
+  catch (e)
+  {
     // This is not critical, no need to spam console
     // console.warn("[Archibald] - updateFolder failed for", folder.name, ":", e);
   }
 
   // Recurse into subfolders
   const s = folder.subFolders;
-  if (!s) return;
+  if (!s)
+    return;
 
-  if (typeof s.hasMoreElements === "function") {
-    while (s.hasMoreElements()) {
+  if (typeof s.hasMoreElements === "function")
+  {
+    while (s.hasMoreElements())
+    {
       let sf = s.getNext();
       try { sf = sf.QueryInterface(Ci.nsIMsgFolder); } catch (_) {}
       await rebuildFolderDBs(sf);
     }
-  } else if (Symbol.iterator in Object(s)) {
-    for (let sf of s) {
+  }
+  else if (Symbol.iterator in Object(s))
+  {
+    for (let sf of s)
+    {
       try { sf = sf.QueryInterface(Ci.nsIMsgFolder); } catch (_) {}
       await rebuildFolderDBs(sf);
     }
@@ -149,11 +174,13 @@ async function repairMboxLayout(nsFolder /* nsIMsgFolder */)
   const sbd = mbox.clone(); sbd.leafName = mbox.leafName + ".sbd";
 
   // If the mbox "file" is actually a DIRECTORY, convert layout:
-  if (mbox.exists() && mbox.isDirectory()) {
+  if (mbox.exists() && mbox.isDirectory())
+  {
     // If Archives.sbd doesn't exist yet, turn the wrong dir into the .sbd
-    if (!sbd.exists()) {
+    if (!sbd.exists())
       mbox.moveTo(parentDir, mbox.leafName + ".sbd"); // Archives -> Archives.sbd
-    } else {
+    else
+    {
       // Both Archives (dir) and Archives.sbd exist: pick one to keep
       // Move content into Archives.sbd and remove stray Archives dir
       const it = mbox.directoryEntries;
@@ -165,11 +192,9 @@ async function repairMboxLayout(nsFolder /* nsIMsgFolder */)
     }
   }
 
-  // Ensure the mbox FILE exists (empty is fine)
-  if (!mbox.exists()) {
-    // createStorageIfMissing will create the mbox + .msf
+  // Ensure the mbox FILE exists (empty is fine), createStorageIfMissing will create the mbox + .msf
+  if (!mbox.exists())
     local.createStorageIfMissing(null);
-  }
 
   // Make sure .sbd exists if there are/will be children
   if (!sbd.exists()) {
@@ -181,24 +206,28 @@ async function repairMboxLayout(nsFolder /* nsIMsgFolder */)
 }
 
 // If we load an older version of archibald archives, we need to move things a bit
-function moveExistingMboxesIntoRootSbd(sourceDir, targetDir) {
+function moveExistingMboxesIntoRootSbd(sourceDir, targetDir)
+{
   const entries = sourceDir.directoryEntries;
-  while (entries.hasMoreElements()) {
+  while (entries.hasMoreElements())
+  {
     const f = entries.getNext().QueryInterface(Ci.nsIFile);
     const name = f.leafName;
 
-    if (name.endsWith(".msf")) {
-      continue; // never import old DBs
-    }
-    if (name.startsWith(".") || name === targetDir.leafName) {
+    // Never import old DBs
+    if (name.endsWith(".msf"))
       continue;
-    }
+    if (name.startsWith(".") || name === targetDir.leafName)
+      continue;
 
-    try {
+    try
+    {
       //console.log("[Archibald] - Copying", name, "to", targetDir.path);
       // Was: f.moveTo(targetDir, name);
       f.copyTo(targetDir, name);
-    } catch (e) {
+    }
+    catch (e)
+    {
       console.warn("[Archibald] - Could not copy", name, ":", e);
     }
   }
@@ -212,26 +241,30 @@ function scanDiskTree(dir)
   const map = Object.create(null);
 
   const entries = dir.directoryEntries;
-  while (entries.hasMoreElements()) {
+  while (entries.hasMoreElements())
+  {
     const f = entries.getNext().QueryInterface(Ci.nsIFile);
     const leaf = f.leafName;
 
-    if (leaf.endsWith(".msf")) {
-      continue; // ignore old DBs completely
-    }
+    // Ignore old DBs completely
+    if (leaf.endsWith(".msf"))
+      continue;
 
-    if (f.isFile()) {
+    if (f.isFile())
+    {
       // Plain mbox file "Foo" -> folder "Foo" (ignore names with dots)
-      if (!leaf.includes(".")) {
-        if (!map[leaf]) {
+      if (!leaf.includes("."))
+      {
+        if (!map[leaf])
           map[leaf] = { name: leaf, children: [] };
-        }
       }
-    } else if (f.isDirectory() && leaf.endsWith(".sbd")) {
+    }
+    else if (f.isDirectory() && leaf.endsWith(".sbd"))
+    {
       const base = leaf.substring(0, leaf.length - 4);
-      if (!map[base]) {
+      if (!map[base])
         map[base] = { name: base, children: [] };
-      }
+
       map[base].children = scanDiskTree(f);
     }
   }
@@ -239,40 +272,41 @@ function scanDiskTree(dir)
   return Object.values(map);
 }
 
-function debugFolderStorage(folder) {
-  try {
+function debugFolderStorage(folder)
+{
+  try
+  {
     const local = folder.QueryInterface(Ci.nsIMsgLocalMailFolder);
     const file = local.filePath;
     console.log("[Archibald] - Storage for", folder.URI,
       "=>", file.path,
       "exists:", file.exists(),
       "size:", file.exists() ? file.fileSize : "n/a");
-  } catch (e) {
+  }
+  catch (e)
+  {
     console.warn("[Archibald] - debugFolderStorage failed for", folder.URI, e);
   }
 }
 
 async function buildTbFoldersFromTree(parentTbFolder, children)
 {
-  for (const node of children) {
+  for (const node of children)
+  {
     let tbChild;
-    try {
+    try
+    {
       // Your existing helper that creates subfolder if needed
       tbChild = await ensureSubfolder(parentTbFolder, node.name);
-    } catch (e) {
-      console.warn(
-        "[Archibald] - ensureSubfolder failed for",
-        node.name,
-        "under",
-        parentTbFolder.name,
-        e
-      );
+    }
+    catch (e)
+    {
+      console.warn("[Archibald] - ensureSubfolder failed for", node.name, "under", parentTbFolder.name, e);
       continue;
     }
 
-    if (node.children && node.children.length) {
+    if (node.children && node.children.length)
       await buildTbFoldersFromTree(tbChild, node.children);
-    }
   }
 }
 
@@ -431,43 +465,58 @@ this.archibaldApi = class extends ExtensionAPI {
           initPickerWithParent(picker, win, options.title || "Select", mode);
 
           // Optional start directory
-          if (options.startDir) {
-            try {
+          if (options.startDir)
+          {
+            try
+            {
               const start = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
               start.initWithPath(options.startDir);
               picker.displayDirectory = start;
-            } catch (e) {
+            }
+            catch (e)
+            {
               console.warn("[archibaldApi.showFilePicker] startDir failed:", e);
             }
           }
 
           // Optional filters: [{ name, extensions: ["pdf","txt"] }]
-          if (Array.isArray(options.filters)) {
-            try {
-              for (const f of options.filters) {
-                if (f?.name && Array.isArray(f.extensions)) {
+          if (Array.isArray(options.filters))
+          {
+            try
+            {
+              for (const f of options.filters)
+              {
+                if (f?.name && Array.isArray(f.extensions))
+                {
                   const pat = f.extensions.map(ext => "*." + ext).join(";");
                   picker.appendFilter(String(f.name), pat);
                 }
               }
-            } catch (e) {
+            }
+            catch (e)
+            {
               console.warn("[archibaldApi.showFilePicker] filters failed:", e);
             }
           }
 
           // Open and return paths
           return await new Promise((resolve) => {
-            try {
+            try
+            {
               picker.open((rv) => {
                 const ok = (rv === Ci.nsIFilePicker.returnOK || rv === Ci.nsIFilePicker.returnReplace);
-                if (!ok) return resolve([]);
+                if (!ok)
+                  return resolve([]);
 
-                if (mode === Ci.nsIFilePicker.modeOpenMultiple) {
+                if (mode === Ci.nsIFilePicker.modeOpenMultiple)
+                {
                   const out = [];
                   const it = picker.files;
-                  while (it && it.hasMoreElements()) {
+                  while (it && it.hasMoreElements())
+                  {
                     const f = it.getNext().QueryInterface(Ci.nsIFile);
-                    if (f?.path) out.push(f.path);
+                    if (f?.path)
+                      out.push(f.path);
                   }
                   return resolve(out);
                 }
@@ -475,7 +524,9 @@ this.archibaldApi = class extends ExtensionAPI {
                 const path = picker.file?.path || "";
                 resolve(path ? [path] : []);
               });
-            } catch (e) {
+            }
+            catch (e)
+            {
               console.error("[archibaldApi.showFilePicker] picker.open threw:", e);
               resolve([]);
             }
@@ -502,17 +553,20 @@ this.archibaldApi = class extends ExtensionAPI {
           filespec.initWithPath(path);
 
           // Ensure the base directory exists and is writable
-          if (!filespec.exists()) {
-            try {
+          if (!filespec.exists())
+          {
+            try
+            {
               filespec.create(Ci.nsIFile.DIRECTORY_TYPE, 0o700);
-            } catch (e) {
+            }
+            catch (e)
+            {
               console.error("Cannot create base directory:", path, e);
               throw e;
             }
           }
-          if (!filespec.isDirectory() || !filespec.isWritable()) {
+          if (!filespec.isDirectory() || !filespec.isWritable())
             throw new Error("Base path is not a writable directory: " + path);
-          }
 
           // Detect whether this directory already contains mail-ish content
           const hasExistingMail = await hasExistingMailStructure(filespec);
@@ -524,11 +578,11 @@ this.archibaldApi = class extends ExtensionAPI {
           // Detect store type (or keep Berkeley if you know it's always mbox)
           const defaultStoreID = await detectStoreType(filespec);
           srv.setStringValue("storeContractID", defaultStoreID);
-
           srv.emptyTrashOnExit = true;
 
           // Only do the destructive cleanup on a *fresh* directory
-          if (!hasExistingMail) {
+          if (!hasExistingMail)
+          {
             await IOUtils.remove(PathUtils.join(path, "Trash"), { ignoreAbsent: true, recursive: true });
             await IOUtils.remove(PathUtils.join(path, "Unsent Messages"), { ignoreAbsent: true, recursive: true });
           }
@@ -546,7 +600,7 @@ this.archibaldApi = class extends ExtensionAPI {
             root = srv.rootMsgFolder.QueryInterface(Ci.nsIMsgFolder);
 
             // Ensure special folders are properly set
-            await ensureSpecialSubfolder(root, "Trash",           F.Trash);
+            await ensureSpecialSubfolder(root, "Trash", F.Trash);
             await ensureSpecialSubfolder(root, "Unsent Messages", F.Queue);
 
             // Proactively create "Archives" parent (Berkeley needs mbox file + .sbd for children)
@@ -575,11 +629,7 @@ this.archibaldApi = class extends ExtensionAPI {
             // Point the server at the copy directory and persist it
             srv.localPath = filespec;
             srv.setStringValue("directory", filespec.path);
-            try {
-              srv.setStringValue("directory-rel", "");
-            } catch (e) {
-              console.warn("Could not clear directory-rel:", e);
-            }
+            try { srv.setStringValue("directory-rel", ""); } catch (e) { console.warn("[Archibald] - Could not clear directory-rel:", e); }
 
             // Create the account and get the root folder
             srv.valid = false;
@@ -594,10 +644,8 @@ this.archibaldApi = class extends ExtensionAPI {
             const rootMbox = rootLocal.filePath.clone();
             let subfolderDir = rootMbox.clone();
             subfolderDir.leafName += ".sbd";
-
-            if (!subfolderDir.exists()) {
+            if (!subfolderDir.exists())
               subfolderDir.create(Ci.nsIFile.DIRECTORY_TYPE, 0o700);
-            }
             console.log("[Archibald] - Subfolder dir for account:", subfolderDir.path);
 
             // Move the copied archive contents under <root>.sbd (mbox + .sbd, but NO .msf)
@@ -609,6 +657,7 @@ this.archibaldApi = class extends ExtensionAPI {
             const diskTree = scanDiskTree(subfolderDir);
             await buildTbFoldersFromTree(root, diskTree);
 
+            // Debug method
             /*const f2016 = getChildIgnoreCase(root, "2016");
             if (f2016) debugFolderStorage(f2016);*/
 
@@ -621,14 +670,10 @@ this.archibaldApi = class extends ExtensionAPI {
 
             // Archives sugar if one exists
             const archives = getChildIgnoreCase(root, "Archives");
-            if (archives) {
-              try {
-                archives.setFlag ? archives.setFlag(F.Archive) : (archives.flags |= F.Archive);
-              } catch (_) {}
-
-              try {
-                await repairMboxLayout(archives);
-              } catch (_) {}
+            if (archives)
+            {
+              try { archives.setFlag ? archives.setFlag(F.Archive) : (archives.flags |= F.Archive); } catch (_) {}
+              try { await repairMboxLayout(archives); } catch (_) {}
             }
           }
 
@@ -696,9 +741,12 @@ this.archibaldApi = class extends ExtensionAPI {
           // Optional extra cleanup if you want to be absolutely sure the directory is gone:
           if (removeFiles && localPath && localPath.exists())
           {
-            try {
+            try
+            {
               await IOUtils.remove(localPath.path, { recursive: true });
-            } catch (e) {
+            }
+            catch (e)
+            {
               console.warn("Failed to remove local directory:", localPath.path, e);
             }
           }
@@ -714,34 +762,35 @@ this.archibaldApi = class extends ExtensionAPI {
         {
           // Find the account
           let account = MailServices.accounts.accounts.find(acc => acc.key === accountId);
-          if (!account) {
+          if (!account)
             throw new Error(`Account with ID "${accountId}" not found`);
-          }
 
           // Get root folder
           let rootFolder = account.incomingServer.rootFolder;
 
           // Create Archives folder if it doesn't already exists
-          if (!rootFolder.containsChildNamed("Archives")) {
+          if (!rootFolder.containsChildNamed("Archives"))
             rootFolder.createSubfolder("Archives", null);
-          }
 
           // Find parent folder by path (default to root)
           parentPath = "/Archives/" + parentPath;
           let parent = rootFolder;
 
-          if (parentPath && parentPath !== "/") {
+          if (parentPath && parentPath !== "/")
+          {
             const parts = parentPath.split("/").filter(p => p);
-            for (let part of parts) {
-              if (!parent.containsChildNamed(part.replaceAll("/", "／"))) {
+            for (let part of parts)
+            {
+              if (!parent.containsChildNamed(part.replaceAll("/", "／")))
                 throw new Error(`Parent folder "${parentPath}" not found`);
-              }
+
               parent = parent.getChildNamed(part.replaceAll("/", "／"));
             }
           }
 
           // Create folder if it doesn't already exist
-          if (!parent.containsChildNamed(name.replaceAll("/", "／"))) {
+          if (!parent.containsChildNamed(name.replaceAll("/", "／")))
+          {
             //console.log("[Archibald] - createArchiveLocalFolder - creating " + name);
             parent.createSubfolder(name, null);
           }
