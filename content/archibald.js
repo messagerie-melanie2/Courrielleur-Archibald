@@ -98,6 +98,13 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 async function processPendingMessages(messages)
 {
+  // What are we doing here if there is nothing to archive, just cancel
+  if(!messages || messages.length == 0)
+  {
+    displayArchibaldMessage("");
+    return;
+  }
+
   // Use the first pending messages to know where we stand
   const accountId = messages[0].accountId;
   const folderURI = messages[0].folderURI;
@@ -172,10 +179,20 @@ async function processPendingMessages(messages)
     }
     archiveCount = 0;
   }, 200);
+
+  // Clear messages
+  await browser.storage.local.set({ "thunderbirdRequest": [] });
 }
 
 async function localyArchivePendingMessages(messages, account, currentPath)
 {
+  // What are we doing here if there is nothing to archive, just cancel
+  if(!messages || messages.length == 0)
+  {
+    displayArchibaldMessage("");
+    return;
+  }
+
   archibaldLog("Archiving pending messages");
   const sourceFolderName = decodeLegacyFolderName(messages[0].folderName);
   let archiveCount = 0;

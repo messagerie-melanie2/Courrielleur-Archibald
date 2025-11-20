@@ -51,7 +51,8 @@ function sleep(ms) {
   });
 }
 
-async function ensureSpecialSubfolder(parent, name, flag) {
+async function ensureSpecialSubfolder(parent, name, flag)
+{
   try { parent.createSubfolder(name, null); } catch (_) {}
   let f = null;
   for (let i = 0; i < 10 && !f; i++) {
@@ -96,8 +97,30 @@ async function ensureSubfolder(parent, name)
   return f; // nsIMsgFolder, ready for moves
 }
 
-async function indexAllFolders(folder) {
-  try { folder.updateFolderWithListener(null, null); } catch (_) {}
+async function rebuildFolderDBs(folder) {
+  //console.log("[Archibald] - Rebuilding DB for:", folder.name);
+
+  try {
+    const local = folder.QueryInterface(Ci.nsIMsgLocalMailFolder);
+    if (typeof local.forceDBClosed === "function") {
+      local.forceDBClosed();
+    }
+  } catch (e) {
+    // Not a local folder or forceDBClosed not exposed – ignore
+  }
+
+  try {
+    if (typeof folder.updateFolderWithListener === "function") {
+      folder.updateFolderWithListener(null, null);
+    } else if (typeof folder.updateFolder === "function") {
+      folder.updateFolder(null);
+    }
+  } catch (e) {
+    // This is not critical, no need to spam console
+    // console.warn("[Archibald] - updateFolder failed for", folder.name, ":", e);
+  }
+
+  // Recurse into subfolders
   const s = folder.subFolders;
   if (!s) return;
 
@@ -105,34 +128,18 @@ async function indexAllFolders(folder) {
     while (s.hasMoreElements()) {
       let sf = s.getNext();
       try { sf = sf.QueryInterface(Ci.nsIMsgFolder); } catch (_) {}
-      await indexAllFolders(sf);
+      await rebuildFolderDBs(sf);
     }
   } else if (Symbol.iterator in Object(s)) {
     for (let sf of s) {
       try { sf = sf.QueryInterface(Ci.nsIMsgFolder); } catch (_) {}
-      await indexAllFolders(sf);
+      await rebuildFolderDBs(sf);
     }
   }
 }
 
-function diagLocalFolder(nsFolder) {
-  nsFolder = nsFolder.QueryInterface(Ci.nsIMsgFolder);
-  console.log("dest URI:", nsFolder.URI, "canFileMessages:", nsFolder.canFileMessages);
-
-  try {
-    const local = nsFolder.QueryInterface(Ci.nsIMsgLocalMailFolder);
-    const file = local.filePath; // nsIFile: the mbox file expected on disk
-    console.log("mbox path:", file.path, "exists:", file.exists(), "isDir:", file.isDirectory(), "writable:", file.isWritable());
-  } catch (e) {
-    console.warn("Not a local mail folder?", e);
-  }
-
-  try { void nsFolder.msgDatabase; console.log("msgDatabase ok"); } catch (e) {
-    console.warn("msgDatabase open failed:", e);
-  }
-}
-
-async function repairMboxLayout(nsFolder /* nsIMsgFolder */) {
+async function repairMboxLayout(nsFolder /* nsIMsgFolder */)
+{
   nsFolder = nsFolder.QueryInterface(Ci.nsIMsgFolder);
   const local = nsFolder.QueryInterface(Ci.nsIMsgLocalMailFolder);
 
@@ -171,6 +178,102 @@ async function repairMboxLayout(nsFolder /* nsIMsgFolder */) {
 
   try { nsFolder.updateFolderWithListener(null, null); } catch (_) {}
   try { void nsFolder.msgDatabase; } catch (_) {}
+}
+
+// If we load an older version of archibald archives, we need to move things a bit
+function moveExistingMboxesIntoRootSbd(sourceDir, targetDir) {
+  const entries = sourceDir.directoryEntries;
+  while (entries.hasMoreElements()) {
+    const f = entries.getNext().QueryInterface(Ci.nsIFile);
+    const name = f.leafName;
+
+    if (name.endsWith(".msf")) {
+      continue; // never import old DBs
+    }
+    if (name.startsWith(".") || name === targetDir.leafName) {
+      continue;
+    }
+
+    try {
+      //console.log("[Archibald] - Copying", name, "to", targetDir.path);
+      // Was: f.moveTo(targetDir, name);
+      f.copyTo(targetDir, name);
+    } catch (e) {
+      console.warn("[Archibald] - Could not copy", name, ":", e);
+    }
+  }
+}
+
+// Reading legacy archive and make it a tree
+function scanDiskTree(dir)
+{
+  // dir: nsIFile directory (typically <root>.sbd or a child *.sbd)
+  // returns: array of { name, children } objects
+  const map = Object.create(null);
+
+  const entries = dir.directoryEntries;
+  while (entries.hasMoreElements()) {
+    const f = entries.getNext().QueryInterface(Ci.nsIFile);
+    const leaf = f.leafName;
+
+    if (leaf.endsWith(".msf")) {
+      continue; // ignore old DBs completely
+    }
+
+    if (f.isFile()) {
+      // Plain mbox file "Foo" -> folder "Foo" (ignore names with dots)
+      if (!leaf.includes(".")) {
+        if (!map[leaf]) {
+          map[leaf] = { name: leaf, children: [] };
+        }
+      }
+    } else if (f.isDirectory() && leaf.endsWith(".sbd")) {
+      const base = leaf.substring(0, leaf.length - 4);
+      if (!map[base]) {
+        map[base] = { name: base, children: [] };
+      }
+      map[base].children = scanDiskTree(f);
+    }
+  }
+
+  return Object.values(map);
+}
+
+function debugFolderStorage(folder) {
+  try {
+    const local = folder.QueryInterface(Ci.nsIMsgLocalMailFolder);
+    const file = local.filePath;
+    console.log("[Archibald] - Storage for", folder.URI,
+      "=>", file.path,
+      "exists:", file.exists(),
+      "size:", file.exists() ? file.fileSize : "n/a");
+  } catch (e) {
+    console.warn("[Archibald] - debugFolderStorage failed for", folder.URI, e);
+  }
+}
+
+async function buildTbFoldersFromTree(parentTbFolder, children)
+{
+  for (const node of children) {
+    let tbChild;
+    try {
+      // Your existing helper that creates subfolder if needed
+      tbChild = await ensureSubfolder(parentTbFolder, node.name);
+    } catch (e) {
+      console.warn(
+        "[Archibald] - ensureSubfolder failed for",
+        node.name,
+        "under",
+        parentTbFolder.name,
+        e
+      );
+      continue;
+    }
+
+    if (node.children && node.children.length) {
+      await buildTbFoldersFromTree(tbChild, node.children);
+    }
+  }
 }
 
 // Determine wether a chosen local folder already contains a maildir to import or not
@@ -390,6 +493,10 @@ this.archibaldApi = class extends ExtensionAPI {
           const randomUser = accountId + "_" + Math.random().toString(36).slice(2, 10);
           let srv = MailServices.accounts.createIncomingServer(randomUser, tmpName, "none");
           srv = srv.QueryInterface(Ci.nsIMsgIncomingServer);
+          // The new local account we will create later, this is the "customLocalFolder"
+          let account = null;
+          // The root of the new account
+          let root = null;
 
           const filespec = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
           filespec.initWithPath(path);
@@ -407,14 +514,14 @@ this.archibaldApi = class extends ExtensionAPI {
             throw new Error("Base path is not a writable directory: " + path);
           }
 
-          // NEW: detect whether this directory already contains mail-ish content
+          // Detect whether this directory already contains mail-ish content
           const hasExistingMail = await hasExistingMailStructure(filespec);
 
           // Set name and localPath
           srv.prettyName = "Local - " + originalAccount.incomingServer.prettyName;
           srv.localPath = filespec;
 
-          // NEW: detect store type (or keep Berkeley if you know it's always mbox)
+          // Detect store type (or keep Berkeley if you know it's always mbox)
           const defaultStoreID = await detectStoreType(filespec);
           srv.setStringValue("storeContractID", defaultStoreID);
 
@@ -426,18 +533,19 @@ this.archibaldApi = class extends ExtensionAPI {
             await IOUtils.remove(PathUtils.join(path, "Unsent Messages"), { ignoreAbsent: true, recursive: true });
           }
 
-          // Create the account
-          srv.valid = false;
-          const account = MailServices.accounts.createAccount();
-          account.incomingServer = srv;
-          srv.valid = true;
-
-          const root = srv.rootMsgFolder.QueryInterface(Ci.nsIMsgFolder);
-
           // This seems to be a fresh directory, let's create a local folders tree normaly
           if (!hasExistingMail)
           {
             console.log("[Archibald] - No existing local folder found at location, creating repository from scratch.");
+
+            // Create the account
+            srv.valid = false;
+            account = MailServices.accounts.createAccount();
+            account.incomingServer = srv;
+            srv.valid = true;
+            root = srv.rootMsgFolder.QueryInterface(Ci.nsIMsgFolder);
+
+            // Ensure special folders are properly set
             await ensureSpecialSubfolder(root, "Trash",           F.Trash);
             await ensureSpecialSubfolder(root, "Unsent Messages", F.Queue);
 
@@ -452,48 +560,75 @@ this.archibaldApi = class extends ExtensionAPI {
             try { root.updateFolderWithListener(null, null); } catch (_) {}
             await sleep(50);
 
-            // Import/index existing on-disk structure so moves work immediately
-            await indexAllFolders(root);
-
+            // rebuild existing on-disk structure so moves work immediately
+            await rebuildFolderDBs(root);
           }
           // This seems to be an existing directory, let's try to import what's in there
           else
           {
             console.log("[Archibald] - Found local folder at given location, starting importation.");
-            try
-            {
-              // Let Thunderbird discover all existing folders/files
-              if (typeof root.updateFolder === "function")
-              {
-                // nsIMsgFolder.updateFolder(nsIMsgWindow aWindow)
-                root.updateFolder(null);
-              }
-            }
-            catch (e)
-            {
-              console.warn("updateFolder failed:", e);
-            }
-            await sleep(100);
 
-            // Walk and index everything on disk (your existing helper)
-            await indexAllFolders(root);
+            // Force Berkeley store for imported archives.
+            //    (If detectStoreType got this wrong, messages will never show up.)
+            srv.setStringValue("storeContractID", "@mozilla.org/msgstore/berkeleystore;1");
 
-            // Try to detect and flag special folders that already exist
+            // Point the server at the copy directory and persist it
+            srv.localPath = filespec;
+            srv.setStringValue("directory", filespec.path);
+            try {
+              srv.setStringValue("directory-rel", "");
+            } catch (e) {
+              console.warn("Could not clear directory-rel:", e);
+            }
+
+            // Create the account and get the root folder
+            srv.valid = false;
+            account = MailServices.accounts.createAccount();
+            account.incomingServer = srv;
+            srv.valid = true;
+
+            root = srv.rootMsgFolder.QueryInterface(Ci.nsIMsgFolder);
+            const rootLocal = root.QueryInterface(Ci.nsIMsgLocalMailFolder);
+
+            // Compute the directory that will hold subfolders for this account
+            const rootMbox = rootLocal.filePath.clone();
+            let subfolderDir = rootMbox.clone();
+            subfolderDir.leafName += ".sbd";
+
+            if (!subfolderDir.exists()) {
+              subfolderDir.create(Ci.nsIFile.DIRECTORY_TYPE, 0o700);
+            }
+            console.log("[Archibald] - Subfolder dir for account:", subfolderDir.path);
+
+            // Move the copied archive contents under <root>.sbd (mbox + .sbd, but NO .msf)
+            console.log("[Archibald] - Adjusting existing mboxes");
+            moveExistingMboxesIntoRootSbd(filespec, subfolderDir);
+
+            // Scan the on-disk tree and create TB folders to match it
+            console.log("[Archibald] - Building folder tree from disk, Thunderbird wont like this, ignore the following errors...");
+            const diskTree = scanDiskTree(subfolderDir);
+            await buildTbFoldersFromTree(root, diskTree);
+
+            /*const f2016 = getChildIgnoreCase(root, "2016");
+            if (f2016) debugFolderStorage(f2016);*/
+
+            // Force DB rebuild for all folders (this should pull messages in)
+            console.log("[Archibald] - Ok ok Thunderbird, Thank you. Now. rebuilding message DBs");
+            await rebuildFolderDBs(root);
+
+            // Auto-flag special folders if we can
             await autoFlagSpecialFolders(root);
 
-            // If there's an Archives folder already, make sure it's flagged + layout repaired
+            // Archives sugar if one exists
             const archives = getChildIgnoreCase(root, "Archives");
-            if (archives)
-            {
+            if (archives) {
               try {
                 archives.setFlag ? archives.setFlag(F.Archive) : (archives.flags |= F.Archive);
-              }
-              catch (_) {}
-              try
-              {
+              } catch (_) {}
+
+              try {
                 await repairMboxLayout(archives);
-              }
-              catch (_) {}
+              } catch (_) {}
             }
           }
 
@@ -504,7 +639,7 @@ this.archibaldApi = class extends ExtensionAPI {
           account.incomingServer = account.incomingServer;
 
           // Diagnostics (optional)
-          try
+          /*try
           {
             console.log("[Archibald] - Diag root URI:", root.URI, "canFile:", root.canFileMessages);
             const archives = getChildIgnoreCase(root, "Archives");
@@ -523,7 +658,7 @@ this.archibaldApi = class extends ExtensionAPI {
               catch(e) {}
             }
           }
-          catch(e) { console.warn("[Archibald] - Diag failed:", e); }
+          catch(e) { console.warn("[Archibald] - Diag failed:", e); }*/
 
           return srv.prettyName;
         },
@@ -575,7 +710,8 @@ this.archibaldApi = class extends ExtensionAPI {
 
 
         // ---------------------- CREATE LOCAL FOLDER TREE -------------------------
-        async createArchiveLocalFolder(accountId, name, parentPath) {
+        async createArchiveLocalFolder(accountId, name, parentPath)
+        {
           // Find the account
           let account = MailServices.accounts.accounts.find(acc => acc.key === accountId);
           if (!account) {
@@ -606,7 +742,7 @@ this.archibaldApi = class extends ExtensionAPI {
 
           // Create folder if it doesn't already exist
           if (!parent.containsChildNamed(name.replaceAll("/", "／"))) {
-            console.log("createArchiveLocalFolder - creating " + name);
+            //console.log("[Archibald] - createArchiveLocalFolder - creating " + name);
             parent.createSubfolder(name, null);
           }
 
