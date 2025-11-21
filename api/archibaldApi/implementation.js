@@ -78,6 +78,8 @@ async function ensureSpecialSubfolder(parent, name, flag)
   try { f.setFlag ? f.setFlag(flag) : (f.flags |= flag); } catch (_) {}
   try { if (f instanceof Ci.nsIMsgLocalMailFolder) f.createStorageIfMissing(null); } catch (_) {}
   try { f.updateFolderWithListener(null, null); } catch (_) {}
+
+  return f;
 }
 
 async function ensureSubfolder(parent, name)
@@ -575,22 +577,28 @@ this.archibaldApi = class extends ExtensionAPI {
           srv.prettyName = "Local - " + originalAccount.incomingServer.prettyName;
           srv.localPath = filespec;
 
-          // Detect store type (or keep Berkeley if you know it's always mbox)
-          const defaultStoreID = await detectStoreType(filespec);
+          let defaultStoreID;
+          if (!hasExistingMail) {
+            // For a brand-new repo, force Berkeley mbox.
+            defaultStoreID = "@mozilla.org/msgstore/berkeleystore;1";
+          } else {
+            // For an existing repo you're importing, detect what it is.
+            defaultStoreID = await detectStoreType(filespec);
+          }
           srv.setStringValue("storeContractID", defaultStoreID);
           srv.emptyTrashOnExit = true;
-
-          // Only do the destructive cleanup on a *fresh* directory
-          if (!hasExistingMail)
-          {
-            await IOUtils.remove(PathUtils.join(path, "Trash"), { ignoreAbsent: true, recursive: true });
-            await IOUtils.remove(PathUtils.join(path, "Unsent Messages"), { ignoreAbsent: true, recursive: true });
-          }
 
           // This seems to be a fresh directory, let's create a local folders tree normaly
           if (!hasExistingMail)
           {
             console.log("[Archibald] - No existing local folder found at location, creating repository from scratch.");
+
+            // Make sure this account will use "move to trash" semantics
+            try {
+              srv.setIntValue("delete_model", 0);
+            } catch (e) {
+              console.warn("[Archibald] - Could not set delete_model:", e);
+            }
 
             // Create the account
             srv.valid = false;
@@ -599,16 +607,29 @@ this.archibaldApi = class extends ExtensionAPI {
             srv.valid = true;
             root = srv.rootMsgFolder.QueryInterface(Ci.nsIMsgFolder);
 
-            // Ensure special folders are properly set
-            await ensureSpecialSubfolder(root, "Trash", F.Trash);
-            await ensureSpecialSubfolder(root, "Unsent Messages", F.Queue);
+            // Explicitly create a Trash folder named *"Trash"* and mark it as Trash
+            const trash = await ensureSpecialSubfolder(root, "Trash", F.Trash);
+            if (trash) {
+              console.log("[Archibald] - Created Trash folder:", trash.name, trash.URI);
+
+              // For a fresh mbox Trash just created by TB APIs, we DO NOT need repairMboxLayout.
+              // It's already in the correct "Trash" mbox + "Trash.sbd" shape.
+              try {
+                srv.setCharValue("trash_folder_name", trash.name); // "Trash"
+              } catch (e) {
+                console.warn("[Archibald] - Could not set trash_folder_name:", e);
+              }
+            }
+            else
+            {
+              console.warn("[Archibald] - Failed to create Trash folder under", root.URI);
+            }
 
             // Proactively create "Archives" parent (Berkeley needs mbox file + .sbd for children)
             console.log("[Archibald] - Proactively creating Archives parent folder");
             const archives = await ensureSubfolder(root, "Archives");
             try { archives.setFlag ? archives.setFlag(F.Archive) : (archives.flags |= F.Archive); } catch (_) {}
             await repairMboxLayout(archives);
-            await repairMboxLayout(getChildIgnoreCase(root, "Corbeille"));
 
             // One more pass to discover everything
             try { root.updateFolderWithListener(null, null); } catch (_) {}
