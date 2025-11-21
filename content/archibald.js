@@ -215,8 +215,17 @@ async function localyArchivePendingMessages(messages, account, currentPath)
     {
       // Find the numeric ID from messageId to move it
       let webExtMessageId = messages.messages[0].id;
-      await browser.messages.move([webExtMessageId], targetFolder.id);
-      archiveCount++;
+      try
+      {
+        // Move the message
+        await browser.messages.move([webExtMessageId], targetFolder.id);
+        archiveCount++;
+      }
+      catch (e)
+      {
+        console.error("Failed to list/move message:", e, "message:", e?.message, "stack:", e?.stack);
+        archibaldLog("Failed to move message:", e?.message || String(e));
+      }
     }
     else
       console.warn("Could not find message for messageId", hdr.messageId);
@@ -593,6 +602,13 @@ async function removeCustomLocalFolder()
     document.getElementById("localFolderPath").value = "";
     archibaldLog("No custom local account to remove for the selected mailbox");
   }
+
+  // In the end, remove also the stored string value for the localFolder field:
+  const storedPaths = await browser.storage.local.get("localFolderPaths");
+  const oldLocalFolderPaths = storedPaths.localFolderPaths || "";
+  const localFolderPath = document.getElementById("localFolderPath").value;
+  const newLocalFolderPaths = upsertPair(oldLocalFolderPaths, selectedAccountId, localFolderPath);
+  await browser.storage.local.set({ localFolderPaths: newLocalFolderPaths });
 }
 
 // Returns true if the local account is the default local account
@@ -1099,7 +1115,7 @@ function readyArchibaldWindow()
   document.getElementById("save").disabled = true;
   document.getElementById("archive").disabled = true;
   document.getElementById("cancel").disabled = true;
-  document.getElementById("statusLabel").textContent = "Archivage en cours...";
+  document.getElementById("statusLabel").textContent = "Traitement en cours...";
 }
 
 // Reset window state

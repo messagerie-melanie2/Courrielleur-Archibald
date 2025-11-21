@@ -604,11 +604,11 @@ this.archibaldApi = class extends ExtensionAPI {
             await ensureSpecialSubfolder(root, "Unsent Messages", F.Queue);
 
             // Proactively create "Archives" parent (Berkeley needs mbox file + .sbd for children)
+            console.log("[Archibald] - Proactively creating Archives parent folder");
             const archives = await ensureSubfolder(root, "Archives");
             try { archives.setFlag ? archives.setFlag(F.Archive) : (archives.flags |= F.Archive); } catch (_) {}
-
-            // Repair wrong on-disk shape if needed
             await repairMboxLayout(archives);
+            await repairMboxLayout(getChildIgnoreCase(root, "Corbeille"));
 
             // One more pass to discover everything
             try { root.updateFolderWithListener(null, null); } catch (_) {}
@@ -656,25 +656,34 @@ this.archibaldApi = class extends ExtensionAPI {
             console.log("[Archibald] - Building folder tree from disk, Thunderbird wont like this, ignore the following errors...");
             const diskTree = scanDiskTree(subfolderDir);
             await buildTbFoldersFromTree(root, diskTree);
+            console.log("[Archibald] - Ok Thunderbird, thanks.");
 
             // Debug method
             /*const f2016 = getChildIgnoreCase(root, "2016");
             if (f2016) debugFolderStorage(f2016);*/
 
-            // Force DB rebuild for all folders (this should pull messages in)
-            console.log("[Archibald] - Ok ok Thunderbird, Thank you. Now. rebuilding message DBs");
-            await rebuildFolderDBs(root);
-
-            // Auto-flag special folders if we can
-            await autoFlagSpecialFolders(root);
-
-            // Archives sugar if one exists
-            const archives = getChildIgnoreCase(root, "Archives");
-            if (archives)
+            // If Archive doesn't already exists, make sure it is ready and properly formated
+            let archives = getChildIgnoreCase(root, "Archives");
+            if (!archives)
             {
+              // Proactively create "Archives" parent (Berkeley needs mbox file + .sbd for children)
+              console.log("[Archibald] - Proactively creating Archives parent folder");
+              archives = await ensureSubfolder(root, "Archives");
               try { archives.setFlag ? archives.setFlag(F.Archive) : (archives.flags |= F.Archive); } catch (_) {}
-              try { await repairMboxLayout(archives); } catch (_) {}
+              await repairMboxLayout(archives);
+              await repairMboxLayout(getChildIgnoreCase(root, "Corbeille"));
             }
+
+
+
+            // One more pass to discover everything
+            console.log("[Archibald] - Checking if everything is in order");
+            try { root.updateFolderWithListener(null, null); } catch (_) {}
+            await sleep(50);
+
+            // rebuild existing on-disk structure so moves work immediately
+            console.log("[Archibald] - Preparing folders to recieve move commands");
+            await rebuildFolderDBs(root);
           }
 
           // Persist to prefs/accounts
