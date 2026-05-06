@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Archibald",
-  "version": "1.0",
+  "version": "1.2",
   "description": "Extension d'archivage de boîtes.",
   "browser_specific_settings": {
     "gecko": {
