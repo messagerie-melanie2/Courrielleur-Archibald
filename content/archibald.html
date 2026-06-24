@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <title>Archibald</title>
@@ -13,35 +14,38 @@
     <div id="progressBar"></div>
   </div>
 </div>
+
 <body>
-    <h1 style="margin-bottom: 4px;">Archibald</h1>
-    Extension d'archivage du Courrielleur
-    <hr style="width:70%; margin-left: 0; margin-top: 20px;margin-bottom: 20px;">
-    <div class="input-group">
-      <label for="mailboxDropdown">Archiver la boîte :</label>
-      <div style="display: flex; gap: 6px; align-items: center;">
-        <select id="mailboxDropdown" style="flex: 0.5; font-weight: bold; padding: 6px; font-size: 14px;"></select>
-        <button data-tooltip="Ouvre une liste des dossiers correspondants à ce compte. Selectionnez y les dossiers dans lesquels Archibald doit chercher des messages à Archiver. Ces dossiers (et leurs parents) seront automatiquement créés dans le compte local cible." id="foldersButton" style="width: 80px; height: 32px; padding: 0 10px;">Dossiers</button>
-      </div>
+  <h1 style="margin-bottom: 4px;">Archibald</h1>
+  Extension d'archivage du Courrielleur
+  <hr style="width:70%; margin-left: 0; margin-top: 20px;margin-bottom: 20px;">
+  <div class="input-group">
+    <label for="mailboxDropdown">Archiver la boîte :</label>
+    <div style="display: flex; gap: 6px; align-items: center;">
+      <select id="mailboxDropdown" style="flex: 0.5; font-weight: bold; padding: 6px; font-size: 14px;"></select>
+      <button
+        data-tooltip="Ouvre une liste des dossiers correspondants à ce compte. Selectionnez y les dossiers dans lesquels Archibald doit chercher des messages à Archiver. Ces dossiers (et leurs parents) seront automatiquement créés dans le compte local cible."
+        id="foldersButton" style="width: 80px; height: 32px; padding: 0 10px;">Dossiers</button>
     </div>
-    <div id="folderSelectionDiv" class="input-group" style="display: none;">
-      <div style="display: flex; width: 60%; align-items: center;">
-        <iframe id="folderSelectionFrame" style="border: 1px solid gray; width: 100%; max-height: 400px;"></iframe>
-      </div>
+  </div>
+  <div id="folderSelectionDiv" class="input-group" style="display: none;">
+    <div style="display: flex; width: 60%; align-items: center;">
+      <iframe id="folderSelectionFrame" style="border: 1px solid gray; width: 100%; max-height: 400px;"></iframe>
     </div>
-
-    <div class="input-group">
-      <label for="days">Archiver les messages de plus de :</label><br/>
-      <input type="number" id="days" value="365" min="0"> jours
-    </div>
-
-    <div class="input-group">
-      <label for="until">Soit jusqu'au :</label><br/>
-      <input type="date" id="until" value="2025-01-10">
-    </div>
+  </div>
 
   <div class="input-group">
-    <label for="useCustomLocalFolder">Archiver vers un dossier personnalisé :</label><br/>
+    <label for="days">Archiver les messages de plus de :</label><br />
+    <input type="number" id="days" value="365" min="0"> jours
+  </div>
+
+  <div class="input-group">
+    <label for="until">Soit jusqu'au :</label><br />
+    <input type="date" id="until" value="2025-01-10">
+  </div>
+
+  <div class="input-group">
+    <label for="useCustomLocalFolder">Archiver vers un dossier personnalisé :</label><br />
     <label class="switch">
       <input class="slider" type="checkbox" id="useCustomLocalFolder">
       <span class="slider-round"></span>
@@ -51,20 +55,26 @@
   <div id="localFolderPathDiv" class="input-group" style="display: none;">
     <label for="localFolderPath">Chemin du dossier à utiliser :</label>
     <div style="display: flex; gap: 6px; align-items: center;">
-      <input type="text" id="localFolderPath" readonly tabindex="-1" style="flex: 0.5; box-sizing: border-box; height: 32px; padding: 6px 8px; font-size: 14px; border: 1px solid gray;"/>
-      <button data-tooltip="Ouvre une fenêtre permettant de choisir un dossier dans lequel Archibald enregistera les archives. Vous pouvez utiliser cette fenêtre pour créer un dossier ou selectionner un dossier d'archive pre-existant." id="btSelectNewLocalFolder" accesskey="b" style="width: 80px; height: 32px; padding: 0 10px;">
+      <input type="text" id="localFolderPath" readonly tabindex="-1"
+        style="flex: 0.5; box-sizing: border-box; height: 32px; padding: 6px 8px; font-size: 14px; border: 1px solid gray;" />
+      <button
+        data-tooltip="Ouvre une fenêtre permettant de choisir un dossier dans lequel Archibald enregistera les archives. Vous pouvez utiliser cette fenêtre pour créer un dossier ou selectionner un dossier d'archive pre-existant."
+        id="btSelectNewLocalFolder" accesskey="b" style="width: 80px; height: 32px; padding: 0 10px;">
         Parcourir…
       </button>
-      <button data-tooltip="Supprime le lien vers ce dossier local. Cela supprimera le compte local de votre Courrielleur, mais conservera les fichiers sur votre ordinateur." class="remove" id="btRemoveCustomLocalFolder" accesskey="r" style="width:32px; height: 32px; padding: 0;">
+      <button
+        data-tooltip="Supprime le lien vers ce dossier local. Cela supprimera le compte local de votre Courrielleur, mais conservera les fichiers sur votre ordinateur."
+        class="remove" id="btRemoveCustomLocalFolder" accesskey="r" style="width:32px; height: 32px; padding: 0;">
         🚫
       </button>
     </div>
   </div>
 
   <hr style="width:70%; margin-left: 0; margin-top: 20px;margin-bottom: 20px;">
-  <div class="buttons" style="width: 56%; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+  <div class="buttons"
+    style="width: 56%; display: flex; justify-content: space-between; align-items: center; gap: 10px;">
     <div>
-      <label id="versionLabel" style="font-size: 0.9em; color: #888;">v1.2</label>
+      <label id="versionLabel" style="font-size: 0.9em; color: #888;">v1.3</label>
     </div>
     <div style="display: flex; align-items: right; gap: 10px;">
       <label id="statusLabel" style="padding-top: 5px;"></label>
@@ -74,4 +84,5 @@
     </div>
   </div>
 </body>
+
 </html>
