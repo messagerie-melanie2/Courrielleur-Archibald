@@ -3,6 +3,7 @@ var { classes: Cc, interfaces: Ci } = Components;
 // ESM imports that should work in TB 115+/128/140+
 const { MailServices } = ChromeUtils.importESModule("resource://gre/modules/MailServices.sys.mjs");
 const { ExtensionCommon } = ChromeUtils.importESModule("resource://gre/modules/ExtensionCommon.sys.mjs");
+const { Services } = ChromeUtils.importESModule("resource://gre/modules/Services.sys.mjs");
 
 // Use Window Mediator via XPCOM (avoids Services import)
 const WM = Cc["@mozilla.org/appshell/window-mediator;1"].getService(Ci.nsIWindowMediator);
@@ -554,6 +555,108 @@ async function autoFlagSpecialFolders(root)
     }
   }
 }
+// Injection d'une feuille de style et détection du thème pour la SpacesToolbar
+function setupSpacesToolbarTheme(w) {
+  try {
+    const toolbar = w.document?.getElementById("spacesToolbar");
+    if (!toolbar) return;
+
+    const STYLE_ID = "webapp-spaces-theme-override";
+    if (!w.document.getElementById(STYLE_ID)) {
+      try {
+        const styleEl = w.document.createElementNS("http://www.w3.org/1999/xhtml", "style");
+        styleEl.id = STYLE_ID;
+        styleEl.textContent = `
+          :root[data-spaces-theme-mode="dark"] .spaces-addon-button img,
+          :root[data-spaces-theme-mode="dark"] .spaces-addon-menuitem,
+          #spacesToolbar[data-theme-mode="dark"] .spaces-addon-button img,
+          #spacesToolbar[data-theme-mode="dark"] .spaces-addon-menuitem {
+            content: var(--webextension-toolbar-image-light, inherit) !important;
+            --menuitem-icon: var(--webextension-toolbar-image-light, inherit) !important;
+          }
+
+          :root[data-spaces-theme-mode="light"] .spaces-addon-button img,
+          :root[data-spaces-theme-mode="light"] .spaces-addon-menuitem,
+          #spacesToolbar[data-theme-mode="light"] .spaces-addon-button img,
+          #spacesToolbar[data-theme-mode="light"] .spaces-addon-menuitem {
+            content: var(--webextension-toolbar-image-dark, inherit) !important;
+            --menuitem-icon: var(--webextension-toolbar-image-dark, inherit) !important;
+          }
+        `;
+        (w.document.head || w.document.documentElement).appendChild(styleEl);
+      } catch (e) {
+        console.error("[Archibald] - Erreur injection style de thème:", e);
+      }
+    }
+
+    const updateToolbarTheme = () => {
+      try {
+        let isDark = false;
+
+        const tbCs = w.getComputedStyle(toolbar)?.colorScheme;
+        const rootCs = w.getComputedStyle(w.document.documentElement)?.colorScheme;
+        if (tbCs === "dark" || rootCs === "dark") {
+          isDark = true;
+        } else if (tbCs === "light" || rootCs === "light") {
+          isDark = false;
+        } else {
+          const sampleBtn = toolbar.querySelector(".spaces-toolbar-button") || toolbar.querySelector("button");
+          const sampleEl = sampleBtn || toolbar;
+          const computedColor = w.getComputedStyle(sampleEl)?.color || "";
+          const rgbMatch = computedColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+          if (rgbMatch) {
+            const r = parseInt(rgbMatch[1], 10);
+            const g = parseInt(rgbMatch[2], 10);
+            const b = parseInt(rgbMatch[3], 10);
+            const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+            isDark = brightness > 128;
+          } else {
+            isDark = w.matchMedia?.("(prefers-color-scheme: dark)")?.matches || false;
+          }
+        }
+
+        const mode = isDark ? "dark" : "light";
+        if (toolbar.getAttribute("data-theme-mode") !== mode) {
+          toolbar.setAttribute("data-theme-mode", mode);
+          w.document.documentElement?.setAttribute("data-spaces-theme-mode", mode);
+          console.log(`[Archibald] - Thème spacesToolbar détecté: ${mode}`);
+        }
+      } catch (e) {
+        console.error("[Archibald] - Erreur détection thème:", e);
+      }
+    };
+
+    if (w._archibald_theme_listener) {
+      try {
+        w.removeEventListener("windowlwthemeupdate", w._archibald_theme_listener);
+      } catch (e) { }
+      w._archibald_theme_listener = null;
+    }
+    w._archibald_theme_listener = updateToolbarTheme;
+    w.addEventListener("windowlwthemeupdate", updateToolbarTheme);
+
+    if (w._archibald_media_listener && w._archibald_mql?.removeEventListener) {
+      try {
+        w._archibald_mql.removeEventListener("change", w._archibald_media_listener);
+      } catch (e) { }
+    }
+    try {
+      const mql = w.matchMedia("(prefers-color-scheme: dark)");
+      if (mql?.addEventListener) {
+        w._archibald_mql = mql;
+        w._archibald_media_listener = updateToolbarTheme;
+        mql.addEventListener("change", updateToolbarTheme);
+      }
+    } catch (e) { }
+
+    updateToolbarTheme();
+    w.setTimeout(updateToolbarTheme, 200);
+    w.setTimeout(updateToolbarTheme, 500);
+    w.setTimeout(updateToolbarTheme, 1500);
+  } catch (err) {
+    console.error("[Archibald] - Erreur dans setupSpacesToolbarTheme:", err);
+  }
+}
 // ================================= FIN HELPERS ============================================
 
 this.archibaldApi = class extends ExtensionAPI {
@@ -576,7 +679,49 @@ this.archibaldApi = class extends ExtensionAPI {
 
     return {
       archibaldApi: {
-        init() {},
+        init() {
+          try {
+            const win = getTopChromeWindow();
+            if (win) {
+              setupSpacesToolbarTheme(win);
+            }
+
+            const docObserver = {
+              observe(subject, topic, data) {
+                try {
+                  const w = subject?.defaultView;
+                  if (!w) return;
+                  const href = w.location?.href || "";
+                  if (href.includes("messenger.xhtml") || href.includes("3pane")) {
+                    w.setTimeout(() => {
+                      try {
+                        setupSpacesToolbarTheme(w);
+                      } catch (e) { }
+                    }, 100);
+                  }
+                } catch (e) { }
+              }
+            };
+            Services.obs.addObserver(docObserver, "chrome-document-loaded");
+            context.callOnClose({
+              close() {
+                try {
+                  Services.obs.removeObserver(docObserver, "chrome-document-loaded");
+                } catch (e) { }
+                try {
+                  if (win?._archibald_theme_listener) {
+                    win.removeEventListener("windowlwthemeupdate", win._archibald_theme_listener);
+                  }
+                  if (win?._archibald_media_listener && win?._archibald_mql?.removeEventListener) {
+                    win._archibald_mql.removeEventListener("change", win._archibald_media_listener);
+                  }
+                } catch (e) { }
+              }
+            });
+          } catch (e) {
+            console.error("[Archibald] - Erreur init spacesToolbar:", e);
+          }
+        },
 
         // ---------------------- PICK A PATH -------------------------
         async showFilePicker(options = {})
