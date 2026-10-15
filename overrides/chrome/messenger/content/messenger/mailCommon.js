@@ -285,13 +285,28 @@ var commandController = {
           try {
             // Find the account key by matching incomingServer
             let folder = hdr.folder;
-            let account = MailServices.accounts.accounts.find(acc => acc.incomingServer === folder.server);
-            let accountKey = account ? account.key : null;
+            let accountKey = null;
+            if (folder && folder.server) {
+              try {
+                let acc = MailServices.accounts.findAccountForServer(folder.server);
+                if (acc) {
+                  accountKey = acc.key;
+                }
+              } catch (_) {}
+              if (!accountKey) {
+                for (const acc of MailServices.accounts.accounts) {
+                  if (acc.incomingServer && (acc.incomingServer === folder.server || acc.incomingServer.key === folder.server.key)) {
+                    accountKey = acc.key;
+                    break;
+                  }
+                }
+              }
+            }
 
             safeMessages.push({
               messageId: hdr.messageId,
-              folderURI: hdr.folder.URI,
-              folderName: hdr.folder.prettyName,
+              folderURI: folder ? (folder.URI || "") : "",
+              folderName: folder ? (folder.prettyName || folder.name || "") : "",
               accountId: accountKey || null,
             });
           } catch (e) {

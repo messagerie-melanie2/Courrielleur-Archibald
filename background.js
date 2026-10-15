@@ -47,16 +47,15 @@ async function createSpaceButton() {
     const defaultUrl = browser.runtime.getURL("content/archibald.html");
     const buttonProperties = {
       title: "Archibald",
+      defaultIcons: {
+        "16": "skin/images/archive_dark.svg",
+        "32": "skin/images/archive_dark.svg",
+      },
       themeIcons: [
         {
           "dark": "skin/images/archive_light.svg",
           "light": "skin/images/archive_dark.svg",
           "size": 16
-        },
-        {
-          "dark": "skin/images/archive_light.svg",
-          "light": "skin/images/archive_dark.svg",
-          "size": 18
         },
         {
           "dark": "skin/images/archive_light.svg",
@@ -69,6 +68,11 @@ async function createSpaceButton() {
     await registerOrUpdateSpace(spaceName, defaultUrl, buttonProperties);
     _spaceButtonCreated = true;
     console.log(`[Archibald] - Space button initialisé avec succès`);
+    try {
+      browser.archibaldApi.init();
+    } catch (e) {
+      console.error("[Archibald] - init post-creation erreur:", e);
+    }
   } catch (error) {
     console.error("[Archibald] - Error creating space button:", error);
   }
@@ -117,4 +121,7 @@ setInterval(() => { archibaldInit(); }, 10000);
 async function openArchibaldWithData(messages) {
   await browser.storage.local.set({ "thunderbirdRequest": messages });
   await browser.runtime.openOptionsPage();
+  try {
+    browser.runtime.sendMessage({ action: "processPendingMessages" }).catch(() => {});
+  } catch (_) {}
 }

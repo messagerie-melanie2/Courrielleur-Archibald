@@ -1,9 +1,10 @@
 var { classes: Cc, interfaces: Ci } = Components;
 
 // ESM imports that should work in TB 115+/128/140+
-const { MailServices } = ChromeUtils.importESModule("resource://gre/modules/MailServices.sys.mjs");
 const { ExtensionCommon } = ChromeUtils.importESModule("resource://gre/modules/ExtensionCommon.sys.mjs");
-const { Services } = ChromeUtils.importESModule("resource://gre/modules/Services.sys.mjs");
+const { MailServices } = globalThis.MailServices
+  ? globalThis
+  : ChromeUtils.importESModule("resource:///modules/MailServices.sys.mjs");
 
 // Use Window Mediator via XPCOM (avoids Services import)
 const WM = Cc["@mozilla.org/appshell/window-mediator;1"].getService(Ci.nsIWindowMediator);
@@ -555,44 +556,88 @@ async function autoFlagSpecialFolders(root)
     }
   }
 }
-// Injection d'une feuille de style et détection du thème pour la SpacesToolbar
-function setupSpacesToolbarTheme(w) {
+// Injection d'une feuille de style spécifique pour synchroniser les icônes de la barre d'espaces
+// avec le mode d'affichage réel (clair / sombre) de Thunderbird, indépendamment du prefers-color-scheme OS.
+function injectThemeOverrideStyle(w) {
   try {
-    const toolbar = w.document?.getElementById("spacesToolbar");
-    if (!toolbar) return;
-
+    if (!w || !w.document) return;
     const STYLE_ID = "webapp-spaces-theme-override";
     if (!w.document.getElementById(STYLE_ID)) {
-      try {
-        const styleEl = w.document.createElementNS("http://www.w3.org/1999/xhtml", "style");
-        styleEl.id = STYLE_ID;
-        styleEl.textContent = `
-          :root[data-spaces-theme-mode="dark"] .spaces-addon-button img,
-          :root[data-spaces-theme-mode="dark"] .spaces-addon-menuitem,
-          #spacesToolbar[data-theme-mode="dark"] .spaces-addon-button img,
-          #spacesToolbar[data-theme-mode="dark"] .spaces-addon-menuitem {
+      const styleEl = w.document.createElementNS("http://www.w3.org/1999/xhtml", "style");
+      styleEl.id = STYLE_ID;
+      styleEl.textContent = `
+        /* 1. PAR DÉFAUT (thème clair) : toujours afficher l'icône sombre pour éviter clair sur clair */
+        .spaces-addon-button img,
+        .spaces-addon-menuitem {
+          content: var(--webextension-toolbar-image-dark, inherit) !important;
+          --menuitem-icon: var(--webextension-toolbar-image-dark, inherit) !important;
+        }
+
+        /* 2. THÈME SOMBRE : basculer sur l'icône claire */
+        :root[lwtheme-brighttext] .spaces-addon-button img,
+        :root[lwt-tree-brighttext] .spaces-addon-button img,
+        :root[data-spaces-theme-mode="dark"] .spaces-addon-button img,
+        #spacesToolbar[data-theme-mode="dark"] .spaces-addon-button img,
+        :root[lwtheme-brighttext] .spaces-addon-menuitem,
+        :root[lwt-tree-brighttext] .spaces-addon-menuitem,
+        :root[data-spaces-theme-mode="dark"] .spaces-addon-menuitem,
+        #spacesToolbar[data-theme-mode="dark"] .spaces-addon-menuitem {
+          content: var(--webextension-toolbar-image-light, inherit) !important;
+          --menuitem-icon: var(--webextension-toolbar-image-light, inherit) !important;
+        }
+
+        /* 3. THÈME CLAIR EXPLICITE */
+        :root[data-spaces-theme-mode="light"] .spaces-addon-button img,
+        #spacesToolbar[data-theme-mode="light"] .spaces-addon-button img,
+        :root[data-spaces-theme-mode="light"] .spaces-addon-menuitem,
+        #spacesToolbar[data-theme-mode="light"] .spaces-addon-menuitem {
+          content: var(--webextension-toolbar-image-dark, inherit) !important;
+          --menuitem-icon: var(--webextension-toolbar-image-dark, inherit) !important;
+        }
+
+        /* 4. MODE SOMBRE SYSTÈME (OS) si Thunderbird n'impose pas un thème clair */
+        @media (prefers-color-scheme: dark) {
+          :root:not([lwtheme]) .spaces-addon-button img,
+          :root[lwtheme-brighttext] .spaces-addon-button img,
+          :root:not([lwtheme]) .spaces-addon-menuitem,
+          :root[lwtheme-brighttext] .spaces-addon-menuitem {
             content: var(--webextension-toolbar-image-light, inherit) !important;
             --menuitem-icon: var(--webextension-toolbar-image-light, inherit) !important;
           }
+        }
+      `;
+      (w.document.head || w.document.documentElement).appendChild(styleEl);
+      console.log("[Archibald] Style de détection de thème injecté avec succès");
+    }
+  } catch (e) {
+    console.error("[Archibald] Erreur injection style de thème:", e);
+  }
+}
 
-          :root[data-spaces-theme-mode="light"] .spaces-addon-button img,
-          :root[data-spaces-theme-mode="light"] .spaces-addon-menuitem,
-          #spacesToolbar[data-theme-mode="light"] .spaces-addon-button img,
-          #spacesToolbar[data-theme-mode="light"] .spaces-addon-menuitem {
-            content: var(--webextension-toolbar-image-dark, inherit) !important;
-            --menuitem-icon: var(--webextension-toolbar-image-dark, inherit) !important;
-          }
-        `;
-        (w.document.head || w.document.documentElement).appendChild(styleEl);
-      } catch (e) {
-        console.error("[Archibald] - Erreur injection style de thème:", e);
-      }
+function setupSpacesToolbarObserver(w) {
+  try {
+    if (!w || !w.document) return;
+    injectThemeOverrideStyle(w);
+
+    const toolbar = w.document.getElementById("spacesToolbar");
+    if (!toolbar) {
+      w.setTimeout(() => setupSpacesToolbarObserver(w), 250);
+      return;
+    }
+
+    // Déconnecter l'ancien observateur s'il existe pour éviter les conflits
+    if (w._archibald_spaces_observer) {
+      try {
+        w._archibald_spaces_observer.disconnect();
+      } catch (e) { }
+      w._archibald_spaces_observer = null;
     }
 
     const updateToolbarTheme = () => {
       try {
         let isDark = false;
 
+        // 1. Détection par colorScheme Gecko/CSS sur la barre d'espaces ou la racine
         const tbCs = w.getComputedStyle(toolbar)?.colorScheme;
         const rootCs = w.getComputedStyle(w.document.documentElement)?.colorScheme;
         if (tbCs === "dark" || rootCs === "dark") {
@@ -600,6 +645,7 @@ function setupSpacesToolbarTheme(w) {
         } else if (tbCs === "light" || rootCs === "light") {
           isDark = false;
         } else {
+          // 2. Détection par la luminosité de la couleur de texte / icône native de la SpacesToolbar
           const sampleBtn = toolbar.querySelector(".spaces-toolbar-button") || toolbar.querySelector("button");
           const sampleEl = sampleBtn || toolbar;
           const computedColor = w.getComputedStyle(sampleEl)?.color || "";
@@ -611,6 +657,7 @@ function setupSpacesToolbarTheme(w) {
             const brightness = (r * 299 + g * 587 + b * 114) / 1000;
             isDark = brightness > 128;
           } else {
+            // 3. Fallback sur le media query standard prefers-color-scheme
             isDark = w.matchMedia?.("(prefers-color-scheme: dark)")?.matches || false;
           }
         }
@@ -619,13 +666,14 @@ function setupSpacesToolbarTheme(w) {
         if (toolbar.getAttribute("data-theme-mode") !== mode) {
           toolbar.setAttribute("data-theme-mode", mode);
           w.document.documentElement?.setAttribute("data-spaces-theme-mode", mode);
-          console.log(`[Archibald] - Thème spacesToolbar détecté: ${mode}`);
+          console.log(`[Archibald] Thème spacesToolbar détecté: ${mode}`);
         }
       } catch (e) {
-        console.error("[Archibald] - Erreur détection thème:", e);
+        console.error("[Archibald] Erreur détection thème:", e);
       }
     };
 
+    // Écouter les changements de thème dynamique
     if (w._archibald_theme_listener) {
       try {
         w.removeEventListener("windowlwthemeupdate", w._archibald_theme_listener);
@@ -650,11 +698,13 @@ function setupSpacesToolbarTheme(w) {
     } catch (e) { }
 
     updateToolbarTheme();
-    w.setTimeout(updateToolbarTheme, 200);
+    w.setTimeout(updateToolbarTheme, 150);
     w.setTimeout(updateToolbarTheme, 500);
-    w.setTimeout(updateToolbarTheme, 1500);
+    w.setTimeout(updateToolbarTheme, 1200);
+    w.setTimeout(updateToolbarTheme, 3000);
+    w.setTimeout(updateToolbarTheme, 6000);
   } catch (err) {
-    console.error("[Archibald] - Erreur dans setupSpacesToolbarTheme:", err);
+    console.error("[Archibald] Erreur dans setupSpacesToolbarObserver:", err);
   }
 }
 // ================================= FIN HELPERS ============================================
@@ -681,45 +731,103 @@ this.archibaldApi = class extends ExtensionAPI {
       archibaldApi: {
         init() {
           try {
-            const win = getTopChromeWindow();
-            if (win) {
-              setupSpacesToolbarTheme(win);
+            function initSingleWindow(w) {
+              if (!w) return;
+              if (w._archibald_window_init_done) {
+                return;
+              }
+              w._archibald_window_init_done = true;
+
+              injectThemeOverrideStyle(w);
+              setupSpacesToolbarObserver(w);
             }
 
-            const docObserver = {
-              observe(subject, topic, data) {
+            // Initialiser les fenêtres déjà ouvertes
+            const enumerator = WM.getEnumerator("mail:3pane");
+            let winCount = 0;
+            while (enumerator.hasMoreElements()) {
+              const win = enumerator.getNext();
+              initSingleWindow(win);
+              winCount++;
+            }
+            console.log(`[Archibald] init: ${winCount} fenêtre(s) mail:3pane initialisée(s) au démarrage`);
+
+            // Écouter les fenêtres futures via window-mediator
+            const winListener = {
+              onOpenWindow(xulWin) {
                 try {
-                  const w = subject?.defaultView;
-                  if (!w) return;
-                  const href = w.location?.href || "";
-                  if (href.includes("messenger.xhtml") || href.includes("3pane")) {
-                    w.setTimeout(() => {
-                      try {
-                        setupSpacesToolbarTheme(w);
-                      } catch (e) { }
-                    }, 100);
+                  const domWin = xulWin.docShell?.domWindow;
+                  if (domWin) {
+                    domWin.addEventListener(
+                      "DOMContentLoaded",
+                      () => {
+                        try {
+                          const href = domWin.location?.href || "";
+                          const winType = domWin.document?.documentElement?.getAttribute("windowtype") || "";
+                          if (winType === "mail:3pane" || href.includes("messenger.xhtml") || href.includes("3pane")) {
+                            domWin.setTimeout(() => initSingleWindow(domWin), 50);
+                          }
+                        } catch (e) {}
+                      },
+                      { once: true }
+                    );
                   }
-                } catch (e) { }
-              }
+                } catch (e) {}
+              },
+              onCloseWindow() {},
+              onWindowTitleChange() {},
             };
-            Services.obs.addObserver(docObserver, "chrome-document-loaded");
+            WM.addListener(winListener);
+
+            // Observer les futurs chargements de documents chrome via observer service
+            const obsService = globalThis.Services?.obs || (Cc["@mozilla.org/observer-service;1"] ? Cc["@mozilla.org/observer-service;1"].getService(Ci.nsIObserverService) : null);
+            let docObserver = null;
+            if (obsService) {
+              docObserver = {
+                observe(subject, topic, data) {
+                  try {
+                    const doc = subject;
+                    const w = doc?.defaultView;
+                    if (!w) return;
+                    const href = w.location?.href || "";
+                    if (href.includes("messenger.xhtml") || href.includes("3pane")) {
+                      w.setTimeout(() => initSingleWindow(w), 50);
+                    }
+                  } catch (e) {}
+                }
+              };
+              obsService.addObserver(docObserver, "chrome-document-loaded");
+            }
+
             context.callOnClose({
               close() {
                 try {
-                  Services.obs.removeObserver(docObserver, "chrome-document-loaded");
-                } catch (e) { }
+                  WM.removeListener(winListener);
+                } catch (e) {}
                 try {
-                  if (win?._archibald_theme_listener) {
-                    win.removeEventListener("windowlwthemeupdate", win._archibald_theme_listener);
+                  if (obsService && docObserver) {
+                    obsService.removeObserver(docObserver, "chrome-document-loaded");
                   }
-                  if (win?._archibald_media_listener && win?._archibald_mql?.removeEventListener) {
-                    win._archibald_mql.removeEventListener("change", win._archibald_media_listener);
+                } catch (e) {}
+                try {
+                  const enumerator = WM.getEnumerator("mail:3pane");
+                  while (enumerator.hasMoreElements()) {
+                    const w = enumerator.getNext();
+                    if (w._archibald_theme_listener) {
+                      w.removeEventListener("windowlwthemeupdate", w._archibald_theme_listener);
+                      w._archibald_theme_listener = null;
+                    }
+                    if (w._archibald_media_listener && w._archibald_mql?.removeEventListener) {
+                      w._archibald_mql.removeEventListener("change", w._archibald_media_listener);
+                      w._archibald_media_listener = null;
+                    }
+                    w._archibald_window_init_done = false;
                   }
-                } catch (e) { }
+                } catch (e) {}
               }
             });
           } catch (e) {
-            console.error("[Archibald] - Erreur init spacesToolbar:", e);
+            console.error("[Archibald] init: ERREUR: " + e + "\n" + e?.stack);
           }
         },
 
@@ -1113,39 +1221,51 @@ this.archibaldApi = class extends ExtensionAPI {
         // ---------------------- CREATE LOCAL FOLDER TREE -------------------------
         async createArchiveLocalFolder(accountId, name, parentPath)
         {
-          // Find the account
-          let account = MailServices.accounts.accounts.find(acc => acc.key === accountId);
-          if (!account)
-            throw new Error(`Account with ID "${accountId}" not found`);
-
-          // Get root folder
-          let rootFolder = account.incomingServer.rootFolder;
-
-          // Create Archives folder if it doesn't already exists
-          if (!rootFolder.containsChildNamed("Archives"))
-            rootFolder.createSubfolder("Archives", null);
-
-          // Find parent folder by path (default to root)
-          parentPath = "/Archives/" + parentPath;
-          let parent = rootFolder;
-
-          if (parentPath && parentPath !== "/")
+          try
           {
-            const parts = parentPath.split("/").filter(p => p);
-            for (let part of parts)
+            // Find the account using helper or getAccount
+            let account = getAccountById(accountId) || MailServices.accounts.getAccount(accountId);
+            if (!account)
+              throw new Error(`Account with ID "${accountId}" not found`);
+
+            // Get root folder
+            let rootFolder = account.incomingServer.rootFolder;
+
+            // Create Archives folder if it doesn't already exists
+            if (!rootFolder.containsChildNamed("Archives"))
+              rootFolder.createSubfolder("Archives", null);
+
+            // Find parent folder by path (default to root)
+            parentPath = "/Archives/" + (parentPath || "");
+            let parent = rootFolder;
+
+            if (parentPath && parentPath !== "/")
             {
-              if (!parent.containsChildNamed(part.replaceAll("/", "／")))
-                throw new Error(`Parent folder "${parentPath}" not found`);
+              const parts = parentPath.split("/").filter(p => p);
+              for (let part of parts)
+              {
+                const cleanPart = part.replaceAll("/", "／");
+                if (!parent.containsChildNamed(cleanPart))
+                  parent.createSubfolder(cleanPart, null);
 
-              parent = parent.getChildNamed(part.replaceAll("/", "／"));
+                parent = parent.getChildNamed(cleanPart);
+              }
             }
-          }
 
-          // Create folder if it doesn't already exist
-          if (!parent.containsChildNamed(name.replaceAll("/", "／")))
+            // Create folder if it doesn't already exist
+            const cleanName = name.replaceAll("/", "／");
+            if (!parent.containsChildNamed(cleanName))
+            {
+              //console.log("[Archibald] - createArchiveLocalFolder - creating " + name);
+              parent.createSubfolder(cleanName, null);
+            }
+
+            return "";
+          }
+          catch (e)
           {
-            //console.log("[Archibald] - createArchiveLocalFolder - creating " + name);
-            parent.createSubfolder(name, null);
+            console.error("[Archibald] - Error in createArchiveLocalFolder:", e);
+            throw e;
           }
 
           return "";
