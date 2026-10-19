@@ -1,15 +1,10 @@
-/* This Source Code Form is subject to the terms of the Mozilla Public
+﻿/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, you can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// mailContext.js
-/* globals mailContextMenu */
-
-// msgViewNavigation.js
-/* globals CrossFolderNavigation */
-
-// about3pane.js
-/* globals ThreadPaneColumns */
+/* globals mailContextMenu */ // mailContext.js
+/* globals CrossFolderNavigation */ // msgViewNavigation.js
+/* globals ThreadPaneColumns */ // about3pane.js
 
 var { MailServices } = ChromeUtils.importESModule(
   "resource:///modules/MailServices.sys.mjs"
@@ -21,12 +16,11 @@ var { XPCOMUtils } = ChromeUtils.importESModule(
 ChromeUtils.defineESModuleGetters(this, {
   ConversationOpener: "resource:///modules/ConversationOpener.sys.mjs",
   DBViewWrapper: "resource:///modules/DBViewWrapper.sys.mjs",
-
   EnigmailPersistentCrypto:
     "chrome://openpgp/content/modules/persistentCrypto.sys.mjs",
-
   MailUtils: "resource:///modules/MailUtils.sys.mjs",
   MessageArchiver: "resource:///modules/MessageArchiver.sys.mjs",
+  TagUtils: "resource:///modules/TagUtils.sys.mjs",
   TreeSelection: "chrome://messenger/content/TreeSelection.mjs",
   VirtualFolderHelper: "resource:///modules/VirtualFolderWrapper.sys.mjs",
 });
@@ -35,7 +29,7 @@ XPCOMUtils.defineLazyServiceGetter(
   this,
   "gEncryptedURIService",
   "@mozilla.org/messenger-smime/smime-encrypted-uris-service;1",
-  "nsIEncryptedSMIMEURIsService"
+  Ci.nsIEncryptedSMIMEURIsService
 );
 
 const nsMsgViewIndex_None = 0xffffffff;
@@ -82,7 +76,7 @@ var commandController = {
     cmd_cancel() {
       gFolder
         .QueryInterface(Ci.nsIMsgNewsFolder)
-        .cancelMessage(gDBView.hdrForFirstSelectedMessage, top.msgWindow);
+        .cancelMessage(gDBView.hdrForFirstSelectedMessage, null, top.msgWindow);
     },
     cmd_openConversation() {
       new ConversationOpener(window).openConversationForMessages(
@@ -120,31 +114,27 @@ var commandController = {
     cmd_tag() {
       // Does nothing, just here to enable/disable the tags sub-menu.
     },
-    cmd_tag1: mailContextMenu._toggleMessageTagKey.bind(mailContextMenu, 1),
-    cmd_tag2: mailContextMenu._toggleMessageTagKey.bind(mailContextMenu, 2),
-    cmd_tag3: mailContextMenu._toggleMessageTagKey.bind(mailContextMenu, 3),
-    cmd_tag4: mailContextMenu._toggleMessageTagKey.bind(mailContextMenu, 4),
-    cmd_tag5: mailContextMenu._toggleMessageTagKey.bind(mailContextMenu, 5),
-    cmd_tag6: mailContextMenu._toggleMessageTagKey.bind(mailContextMenu, 6),
-    cmd_tag7: mailContextMenu._toggleMessageTagKey.bind(mailContextMenu, 7),
-    cmd_tag8: mailContextMenu._toggleMessageTagKey.bind(mailContextMenu, 8),
-    cmd_tag9: mailContextMenu._toggleMessageTagKey.bind(mailContextMenu, 9),
-    cmd_addTag() {
-      mailContextMenu.addTag();
-    },
+    cmd_tag1: () => commandController._toggleMessageTagKey(1),
+    cmd_tag2: () => commandController._toggleMessageTagKey(2),
+    cmd_tag3: () => commandController._toggleMessageTagKey(3),
+    cmd_tag4: () => commandController._toggleMessageTagKey(4),
+    cmd_tag5: () => commandController._toggleMessageTagKey(5),
+    cmd_tag6: () => commandController._toggleMessageTagKey(6),
+    cmd_tag7: () => commandController._toggleMessageTagKey(7),
+    cmd_tag8: () => commandController._toggleMessageTagKey(8),
+    cmd_tag9: () => commandController._toggleMessageTagKey(9),
+    cmd_addTag: () => commandController._addTag(),
     cmd_manageTags() {
-      window.browsingContext.topChromeWindow.openOptionsDialog(
+      window.browsingContext.topChromeWindow.openPreferencesTab(
         "paneGeneral",
         "tagsCategory"
       );
     },
-    cmd_removeTags() {
-      mailContextMenu.removeAllMessageTags();
-    },
-    cmd_toggleTag(event) {
-      mailContextMenu._toggleMessageTag(
+    cmd_removeTags: () => commandController._removeAllMessageTags(),
+    cmd_toggleTag: event => {
+      commandController._toggleMessageTag(
         event.target.value,
-        event.target.getAttribute("checked") == "true"
+        event.target.hasAttribute("checked")
       );
     },
     cmd_markReadByDate() {
@@ -228,21 +218,17 @@ var commandController = {
      *
      * @param {nsIMsgFolder} destFolder - the destination folder
      */
-    cmd_copyMessage(destFolder) {
+    async cmd_copyMessage(destFolder) {
       if (window.gMessageURI?.startsWith("file:")) {
         const file = Services.io
           .newURI(window.gMessageURI)
           .QueryInterface(Ci.nsIFileURL).file;
-        MailServices.copy.copyFileMessage(
+        await MailUtils.copyFileMessageAsync(
           file,
           destFolder,
-          null,
-          false,
-          Ci.nsMsgMessageFlags.Read,
-          "",
-          null,
           top.msgWindow
-        );
+        ).catch(console.warn);
+        await MailUtils.updateFolderAsync(destFolder).catch(console.warn);
       } else {
         gViewWrapper.dbView.doCommandWithFolder(
           Ci.nsMsgViewCommandType.copyMessages,
@@ -267,10 +253,9 @@ var commandController = {
       // The instance of nsITransactionManager to use here is tied to msgWindow. Set
       // this property so the operation can be undone if requested.
       archiver.msgWindow = top.msgWindow;
-      // PATCH ------
+      // PATCH ARCHIBALD ------
       // Archive the selected message(s).
-      //archiver.archiveMessages(gViewWrapper.dbView.getSelectedMsgHdrs());
-      console.log("Calling Archibald instead of using default Archiving method.");
+      console.log("[Archibald] Calling Archibald instead of using default Archiving method.");
       const { ExtensionParent } = ChromeUtils.importESModule(
         "resource://gre/modules/ExtensionParent.sys.mjs"
       );
@@ -310,16 +295,16 @@ var commandController = {
               accountId: accountKey || null,
             });
           } catch (e) {
-            console.error("Could not serialize header:", e);
+            console.error("[Archibald] Could not serialize header:", e);
           }
         }
         // Send formated data to Archibald
         ext.emit("TbArchive", { messages: safeMessages });
       } else {
-        // Else, juste use the usual thunderbird archiving method
+        // Else, just use the usual thunderbird archiving method
         archiver.archiveMessages(gViewWrapper.dbView.getSelectedMsgHdrs());
       }
-      // FIN PATCH -----
+      // FIN PATCH ARCHIBALD -----
     },
     cmd_moveToFolderAgain() {
       if (parent.location.href == "about:3pane") {
@@ -440,6 +425,7 @@ var commandController = {
         MailServices.filters.applyFilters(
           Ci.nsMsgFilterType.Manual,
           selectedMessages,
+          [],
           gFolder,
           top.msgWindow
         );
@@ -480,15 +466,6 @@ var commandController = {
         top.goDoCommand("cmd_nextUnreadMsg");
       }
     },
-    cmd_searchMessages(folder = gFolder) {
-      // We always open a new search dialog for each search command.
-      top.openDialog(
-        "chrome://messenger/content/SearchDialog.xhtml",
-        "_blank",
-        "chrome,resizable,status,centerscreen,dialog=no",
-        { folder }
-      );
-    },
   },
   _isCallbackEnabled: {},
 
@@ -518,9 +495,6 @@ var commandController = {
     switch (command) {
       case "cmd_newMessage":
         return hasIdentities;
-      case "cmd_searchMessages":
-        // TODO: This shouldn't be here, or should return false if there are no accounts.
-        return true;
       case "cmd_space":
       case "cmd_manageTags":
         return true;
@@ -709,7 +683,7 @@ var commandController = {
         return gDBView?.msgFolder?.getNumUnread(false) > 0;
       case "cmd_markAsJunk":
       case "cmd_markAsNotJunk":
-        return this._getViewCommandStatus(Ci.nsMsgViewCommandType.junk);
+        return gDBView?.getCommandStatus(Ci.nsMsgViewCommandType.junk);
       case "cmd_archive":
         return (
           !isDummyMessage &&
@@ -739,9 +713,7 @@ var commandController = {
       case "cmd_deleteMessage":
         return canMove();
       case "cmd_shiftDeleteMessage":
-        return this._getViewCommandStatus(
-          Ci.nsMsgViewCommandType.deleteNoTrash
-        );
+        return gDBView?.getCommandStatus(Ci.nsMsgViewCommandType.deleteNoTrash);
       case "cmd_createFilterFromMenu":
         return (
           numSelectedMessages == 1 &&
@@ -752,17 +724,12 @@ var commandController = {
         if (gViewWrapper?.showGroupedBySort) {
           return false;
         }
-        const enabledObj = {};
-        const checkStatusObj = {};
-        gViewWrapper.dbView.getCommandStatus(
-          Ci.nsMsgViewCommandType.toggleThreadWatched,
-          enabledObj,
-          checkStatusObj
+        return gDBView?.getCommandStatus(
+          Ci.nsMsgViewCommandType.toggleThreadWatched
         );
-        return enabledObj.value;
       }
       case "cmd_applyFilters": {
-        return this._getViewCommandStatus(Ci.nsMsgViewCommandType.applyFilters);
+        return gDBView?.getCommandStatus(Ci.nsMsgViewCommandType.applyFilters);
       }
     }
 
@@ -806,19 +773,129 @@ var commandController = {
     }
   },
 
-  _getViewCommandStatus(commandType) {
-    if (!gViewWrapper?.dbView) {
-      return false;
+  /**
+   * Toggle the state of a message tag on the selected messages (based on the
+   * state of the first selected message, like for starring).
+   *
+   * @param {number} keyNumber - The number (1 through 9) associated with the tag.
+   */
+  _toggleMessageTagKey(keyNumber) {
+    const msgHdr = gDBView.hdrForFirstSelectedMessage;
+    if (!msgHdr) {
+      return;
     }
 
-    const enabledObj = {};
-    const checkStatusObj = {};
-    gViewWrapper.dbView.getCommandStatus(
-      commandType,
-      enabledObj,
-      checkStatusObj
+    const tagArray = MailServices.tags.getAllTags();
+    if (keyNumber > tagArray.length) {
+      return;
+    }
+
+    // Determine if the tag needs to be added or removed based on the first
+    // message.
+    const key = tagArray[keyNumber - 1].key;
+    const curKeys = msgHdr.getStringProperty("keywords").split(" ");
+    this._toggleMessageTag(key, !curKeys.includes(key));
+  },
+
+  _removeAllMessageTags() {
+    const selectedMessages = gDBView.getSelectedMsgHdrs();
+    if (!selectedMessages.length) {
+      return;
+    }
+
+    // Get all known valid tags so we don't delete internal keywords (like
+    // $Junk).
+    const allKnownKeys = new Set(
+      MailServices.tags.getAllTags().map(t => t.key)
     );
-    return enabledObj.value;
+
+    // Group selected messages by folder, and collect only the tags actually
+    // present.
+    const folderMap = new Map();
+
+    for (const msgHdr of selectedMessages) {
+      const folder = msgHdr.folder;
+
+      if (!folderMap.has(folder)) {
+        folderMap.set(folder, { messages: [], keysToRemove: new Set() });
+      }
+
+      const folderData = folderMap.get(folder);
+      folderData.messages.push(msgHdr);
+
+      // Look at the tags actually applied to this specific message.
+      const curKeys = msgHdr
+        .getStringProperty("keywords")
+        .split(" ")
+        .filter(Boolean);
+
+      // Add it to our removal list only if it's currently on the message and
+      // is a known tag.
+      for (const key of curKeys) {
+        if (allKnownKeys.has(key)) {
+          folderData.keysToRemove.add(key);
+        }
+      }
+    }
+
+    // Dispatch the removal command per folder.
+    for (const [folder, data] of folderMap) {
+      if (data.keysToRemove.size > 0) {
+        const keysStr = Array.from(data.keysToRemove).join(" ");
+        folder.removeKeywordsFromMessages(data.messages, keysStr);
+      }
+    }
+  },
+
+  /**
+   * @param {string} key - nsIMsgTag.key
+   * @param {boolean} addKey - true to add, false to remove
+   */
+  _toggleMessageTag(key, addKey) {
+    const selectedMessages = gDBView.getSelectedMsgHdrs();
+    if (!selectedMessages.length) {
+      return;
+    }
+
+    // Group selected messages by folder to properly handle cross-folder
+    // virtual folders and saved searches.
+    const folderMap = new Map();
+
+    for (const msgHdr of selectedMessages) {
+      const folder = msgHdr.folder;
+
+      if (!folderMap.has(folder)) {
+        folderMap.set(folder, []);
+      }
+      folderMap.get(folder).push(msgHdr);
+    }
+
+    for (const [folder, messages] of folderMap) {
+      if (addKey) {
+        folder.addKeywordsToMessages(messages, key);
+      } else {
+        folder.removeKeywordsFromMessages(messages, key);
+      }
+    }
+  },
+
+  _addTag() {
+    top.openDialog(
+      "chrome://messenger/content/newTagDialog.xhtml",
+      "",
+      "chrome,titlebar,modal,centerscreen",
+      {
+        result: "",
+        okCallback: (name, color) => {
+          MailServices.tags.addTag(name, color, "");
+          const key = MailServices.tags.getKeyForTag(name);
+          TagUtils.addTagToAllDocumentSheets(key, color);
+
+          this._toggleMessageTag(key, true);
+          return true;
+        },
+      }
+    );
   },
 
   /**
@@ -829,11 +906,9 @@ var commandController = {
    * @param {Event} [event] - The event that triggered the call.
    */
   _composeMsgByType(composeType, event) {
-    // If we're the hidden window, then we're not going to have a gFolderDisplay
-    // to work out existing folders, so just use null.
     const msgFolder = gFolder;
     const msgUris =
-      gFolder || gViewWrapper.isSynthetic
+      gFolder || gViewWrapper?.isSynthetic
         ? gDBView?.getURIsForSelection()
         : [window.gMessageURI];
 
@@ -985,7 +1060,7 @@ var commandController = {
         window.messageBrowser.contentWindow?.getMessagePaneBrowser()
           .contentWindow
       ) {
-        // There's something strange going on here – calling `focus`
+        // There's something strange going on here â€“ calling `focus`
         // immediately can cause the scroll position to return to where it was
         // before changing folders, which starts a cascade of "scroll" events
         // until the tree scrolls to the top.
@@ -1084,7 +1159,10 @@ var dbViewWrapperListener = {
     this._allMessagesLoaded = false;
 
     if (!window.threadTree || !gViewWrapper) {
-      if (location.href == "about:message" && window.msgLoading) {
+      if (
+        location.href == "about:message" &&
+        (window.msgLoading || window.msgLoaded)
+      ) {
         // Apparently the view has been re-created after the underlying folder
         // has been compacted.
         window.ReloadMessage();
