@@ -25,6 +25,18 @@ async function populateInboxDropdown()
 }
 populateInboxDropdown();
 
+// Set the extension version dynamically from manifest.json
+function displayExtensionVersion()
+{
+  const versionLabel = document.getElementById("versionLabel");
+  if (versionLabel)
+  {
+    const manifest = browser.runtime.getManifest();
+    versionLabel.textContent = `v${manifest.version}`;
+  }
+}
+displayExtensionVersion();
+
 let isProcessingPending = false;
 
 // Check and process any pending messages from Thunderbird core
@@ -143,17 +155,22 @@ async function processPendingMessages(messages)
   let currentPath = "";
 
   // Artificially add the folders of the pendingMessage to create them if needed
-  pendingMessageFolders.forEach(folderName => {
-    currentPath += "/" + folderName;
+  pendingMessageFolders.forEach((folderName, index) => {
+    let decodedName = decodeLegacyFolderName(folderName);
+    // If leaf folder and messages[0] provided pretty folderName, prefer it
+    if (index === pendingMessageFolders.length - 1 && messages[0]?.folderName) {
+      decodedName = decodeLegacyFolderName(messages[0].folderName);
+    }
+    currentPath += "/" + decodedName;
     let folder = {
-      name: decodeLegacyFolderName(folderName),
+      name: decodedName,
       path: currentPath,
       id: accountId + "://" + currentPath.slice(1), // remove leading slash
       accountId: accountId
     };
 
     // Add it to the array if needed
-    if (!pendingFolders.some(f => f.path === folder.path)) {
+    if (!pendingFolders.some(f => f.name === folder.name || f.path === folder.path)) {
       pendingFolders.push(folder);
     }
   });
@@ -225,7 +242,26 @@ async function localyArchivePendingMessages(messages, account, currentPath)
   // logLocalFolders();
   // We need to find the local folder by matching the true source folder path with the local folders names
   // because local folder ids might be abstracted by thunderbird in some cases
-  const targetFolder = await getLocalFolder(account, localFolderPath);
+  let targetFolder = await getLocalFolder(account, localFolderPath);
+  if (!targetFolder)
+  {
+    archibaldLog(`Target local folder not found: ${localFolderPath}, creating it now...`);
+    const localAccount = await getAccountLocalAccount(account, true);
+    if (localAccount)
+    {
+      const parts = localFolderPath.split("/").filter(Boolean);
+      // parts[0] is "Archives"
+      let parentPath = "";
+      for (let i = 1; i < parts.length; i++)
+      {
+        const partName = sanitizeFolderName(parts[i]);
+        await browser.archibaldApi.createArchiveLocalFolder(localAccount.id, partName, parentPath);
+        parentPath += partName + "/";
+      }
+      targetFolder = await getLocalFolder(account, localFolderPath);
+    }
+  }
+
   if (!targetFolder)
   {
     archibaldLog(`Target local folder not found: ${localFolderPath}`);
@@ -378,30 +414,45 @@ async function selectNewLocalFolder()
 {
   try
   {
-    try
+    const paths = await messenger.archibaldApi.showFilePicker({
+      mode: "openFolder",
+      title: "Choisissez un dossier"
+    });
+    if (Array.isArray(paths) && paths.length > 0)
     {
-      const paths = await messenger.archibaldApi.showFilePicker({
-        mode: "openFolder",
-        title: "Choisissez un dossier"
-      });
-      if (Array.isArray(paths) && paths.length > 0)
-      {
-        document.getElementById("localFolderPath").value = paths[0];
-        archibaldLog("Chose new local folder path: " + paths[0]);
-      }
-      else
-        console.warn("No folder selected or picker cancelled.");
-    }
-    catch (ex)
-    {
-      archibaldLog("Error in selectNewLocalFolder: "+ex.message);
-    }
-    } catch (ex) {
-        alert(ex);
-        return false;
-    }
+      const selectedPath = paths[0];
 
-    return true;
+      // Check if selected folder conflicts with existing accounts (especially default Local Folders)
+      const conflict = await messenger.archibaldApi.checkLocalFolderConflict(selectedPath);
+      if (conflict && conflict.isConflict)
+      {
+        if (conflict.isDefaultLocal)
+        {
+          alert("Ce dossier est déjà utilisé par Thunderbird pour les Dossiers locaux. Pour utiliser les Dossiers locaux, désactivez simplement l'option \"Dossier personnalisé\".");
+        }
+        else
+        {
+          alert(`Ce dossier est déjà utilisé par le compte « ${conflict.accountName || "existant"} ». Veuillez en choisir un autre.`);
+        }
+        return false;
+      }
+
+      document.getElementById("localFolderPath").value = selectedPath;
+      archibaldLog("Chose new local folder path: " + selectedPath);
+    }
+    else
+    {
+      console.warn("No folder selected or picker cancelled.");
+    }
+  }
+  catch (ex)
+  {
+    archibaldLog("Error in selectNewLocalFolder: " + ex.message);
+    alert(ex.message || ex);
+    return false;
+  }
+
+  return true;
 }
 function validateNewLocalPath(path)
 {
@@ -439,13 +490,23 @@ function validateNewLocalPath(path)
 async function createLocalFolder(folder, localAccountId, parentPath, storedFolders)
 {
   const storedList = storedFolders || [];
-  const isFolderChecked = storedList.some(f => f.name === folder.name);
+  const isFolderChecked = storedList.some(f =>
+    f.name === folder.name ||
+    decodeLegacyFolderName(f.name) === decodeLegacyFolderName(folder.name) ||
+    sanitizeFolderName(f.name) === sanitizeFolderName(folder.name) ||
+    f.path === folder.path
+  );
 
   // Recursive function to check if any descendant folder is checked
   async function hasCheckedDescendants(currentFolder) {
     const subFolders = await browser.folders.getSubFolders(currentFolder.id);
     for (const sub of subFolders) {
-      if (storedList.some(f => f.name === sub.name)) {
+      if (storedList.some(f =>
+        f.name === sub.name ||
+        decodeLegacyFolderName(f.name) === decodeLegacyFolderName(sub.name) ||
+        sanitizeFolderName(f.name) === sanitizeFolderName(sub.name) ||
+        f.path === sub.path
+      )) {
         return true;
       }
       if (await hasCheckedDescendants(sub)) {
@@ -552,7 +613,9 @@ async function getLocalFolder(originalAccount, targetPath)
       f.name === nextPart ||
       f.name === decodedNextPart ||
       f.name === sanitizedNextPart ||
-      f.name === decodeLegacyFolderName(sanitizedNextPart)
+      f.name === decodeLegacyFolderName(sanitizedNextPart) ||
+      decodeLegacyFolderName(f.name) === decodedNextPart ||
+      decodeLegacyFolderName(f.name) === nextPart
     );
     if (!nextFolder)
       return null;
@@ -561,15 +624,56 @@ async function getLocalFolder(originalAccount, targetPath)
   }
 }
 
-// I don't know why, but folder names accents are in shambles, decode them...
+// Decodes RFC 3501 modified UTF-7 and percent-encoded folder names (used in IMAP URLs)
+function decodeImapUtf7(str)
+{
+  if (!str || typeof str !== "string")
+    return "";
+
+  // Decode percent-encoded characters first (e.g., %20)
+  try {
+    str = decodeURIComponent(str);
+  } catch (_) {
+    str = str.replace(/%20/g, " ");
+  }
+
+  // Decode RFC 3501 modified UTF-7: &...-
+  return str.replace(/&([^-]*)-/g, (match, b64) => {
+    if (b64 === "")
+      return "&"; // &- represents a literal '&'
+
+    try {
+      // Modified Base64 replaces '/' with ','
+      let base64 = b64.replace(/,/g, "/");
+      while (base64.length % 4 !== 0) {
+        base64 += "=";
+      }
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return new TextDecoder("utf-16be").decode(bytes);
+    } catch (_) {
+      return match;
+    }
+  });
+}
+
+// Folder names accents are encoded in modified IMAP UTF-7 or percent-encoding, decode them...
 function decodeLegacyFolderName(str)
 {
   if (!str || typeof str !== "string")
     return "";
 
+  // 1. Decode RFC 3501 IMAP UTF-7
+  str = decodeImapUtf7(str);
+
+  // 2. Fallback map for any remaining legacy custom encoded strings
   const legacyMap = {
-    // Html codes
     '%20': ' ',
+    '&AMk-': 'É',
+    '&AOk-': 'é',
 
     // Lowercase
     '&AOa-': 'à',
@@ -582,7 +686,6 @@ function decodeLegacyFolderName(str)
     '&AOh-': 'î',
     '&AOi-': 'ï',
     '&AOj-': 'ô',
-    '&AOk-': 'é',
     '&AOl-': 'ù',
     '&AOm-': 'û',
     '&AOn-': 'ü',
@@ -612,7 +715,10 @@ function decodeLegacyFolderName(str)
   };
 
   for (const [key, val] of Object.entries(legacyMap))
-    str = str.split(key).join(val);
+  {
+    if (str.includes(key))
+      str = str.split(key).join(val);
+  }
 
   return str;
 }
@@ -1016,6 +1122,7 @@ async function getAccountLocalAccount(originalAccount, forceCreation)
   catch(ex)
   {
     archibaldLog("Error in getAccountLocalAccount: " + ex.message);
+    alert(ex.message || ex);
     return null;
   }
 }

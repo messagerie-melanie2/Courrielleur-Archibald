@@ -61,6 +61,16 @@
         }
       },
       {
+        "name": "checkLocalFolderConflict",
+        "type": "function",
+        "description": "Checks if a given folder path is already used by an existing Thunderbird account.",
+        "parameters": [
+          { "name": "path", "type": "string" }
+        ],
+        "async": true,
+        "returns": { "type": "any" }
+      },
+      {
         "name": "createCustomLocalFolder",
         "type": "function",
         "description": "Create (or ensure) a custom local folder account for the given account at the specified path. Returns the created account key (e.g. 'account7').",

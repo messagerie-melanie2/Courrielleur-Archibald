@@ -921,10 +921,71 @@ this.archibaldApi = class extends ExtensionAPI {
         },
         // ---------------------- PICK A PATH (fin) -------------------------
 
+        // ---------------------- CHECK LOCAL FOLDER CONFLICT -------------------------
+        async checkLocalFolderConflict(path)
+        {
+          if (!path || typeof path !== "string") {
+            return { isConflict: false };
+          }
+
+          function normalizePath(p) {
+            if (!p) return "";
+            return p.replace(/[\\/]+$/, "").toLowerCase();
+          }
+
+          const target = normalizePath(path);
+
+          // 1. Check default local folders server
+          try {
+            const defaultLocalServer = MailServices.accounts.localFoldersServer;
+            if (defaultLocalServer && defaultLocalServer.localPath) {
+              if (normalizePath(defaultLocalServer.localPath.path) === target) {
+                return {
+                  isConflict: true,
+                  isDefaultLocal: true,
+                  accountName: defaultLocalServer.prettyName || "Dossiers locaux"
+                };
+              }
+            }
+          } catch (e) {
+            console.warn("[Archibald] Error checking localFoldersServer:", e);
+          }
+
+          // 2. Check all accounts in Thunderbird
+          try {
+            for (const acc of MailServices.accounts.accounts) {
+              const srv = acc.incomingServer;
+              if (srv && srv.localPath) {
+                if (normalizePath(srv.localPath.path) === target) {
+                  const isDefault = (srv.type === "none" && (srv.prettyName === "Dossiers locaux" || srv.key === "server1"));
+                  return {
+                    isConflict: true,
+                    isDefaultLocal: isDefault,
+                    accountName: srv.prettyName || (acc.defaultIdentity ? acc.defaultIdentity.email : acc.key)
+                  };
+                }
+              }
+            }
+          } catch (e) {
+            console.warn("[Archibald] Error checking accounts for path conflict:", e);
+          }
+
+          return { isConflict: false };
+        },
+
         // ---------------------- CREATE / IMPORT LOCAL ACCOUNT -------------------------
         async createCustomLocalFolder(accountId, path)
         {
             console.log("[Archibald] - createCustomLocalFolder experiment API starting.");
+            const conflict = await this.checkLocalFolderConflict(path);
+            if (conflict && conflict.isConflict) {
+              if (conflict.isDefaultLocal) {
+                throw new Error("Ce dossier est déjà utilisé par Thunderbird pour les Dossiers locaux. Pour utiliser les Dossiers locaux, désactivez simplement l'option \"Dossier personnalisé\".");
+              } else {
+                throw new Error(`Ce dossier est déjà utilisé par le compte « ${conflict.accountName || "existant"} ». Veuillez en choisir un autre.`);
+              }
+            }
+
             const originalAccount = getAccountById(accountId);
             let tmpName = sanitizeName(originalAccount.incomingServer.prettyName);
 
