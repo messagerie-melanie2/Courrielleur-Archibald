@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Archibald",
-  "version": "1.7",
+  "version": "1.8",
   "description": "Extension d'archivage de boîtes.",
   "browser_specific_settings": {
     "gecko": {
@@ -31,6 +31,7 @@
   },
   "background": {
     "scripts": [
+      "content/archibaldLogic.js",
       "background.js"
     ]
   },
@@ -52,6 +53,7 @@
       "resources": [
         "content/archibald.html",
         "content/archibaldHelpers.js",
+        "content/archibaldLogic.js",
         "content/default/preferences/default_pref.json"
       ],
       "matches": [

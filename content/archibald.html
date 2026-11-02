@@ -6,6 +6,7 @@
   <title>Archibald</title>
   <link rel="stylesheet" type="text/css" href="../skin/theme.css">
   <script src="../lib/jszip.min.js" defer></script>
+  <script src="archibaldLogic.js" defer></script>
   <script src="archibald.js" defer></script>
 </head>
 <div id="progressContainer" style="display: none; margin-top: 20px;">
@@ -68,6 +69,14 @@
         🚫
       </button>
     </div>
+  </div>
+
+  <div class="input-group">
+    <label for="showWindowOnManualArchive">Afficher cette fenêtre en cas d'Archivage manuel :</label><br />
+    <label class="switch">
+      <input class="slider" type="checkbox" id="showWindowOnManualArchive">
+      <span class="slider-round"></span>
+    </label>
   </div>
 
   <hr style="width:70%; margin-left: 0; margin-top: 20px;margin-bottom: 20px;">

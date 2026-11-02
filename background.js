@@ -89,10 +89,40 @@ function archibaldInit() {
   createSpaceButton();
 }
 
+let _manualArchiveQueue = Promise.resolve();
+
 // Listens for Thunderbird archive requests
-function messageListener(messages) {
-  console.log("[Archibald] - Background received data from implementation:", messages);
-  openArchibaldWithData(messages);
+function messageListener(data) {
+  console.log("[Archibald] - Background received data from implementation:", data);
+  _manualArchiveQueue = _manualArchiveQueue.then(async () => {
+    try {
+      const { showWindowOnManualArchive } = await browser.storage.local.get("showWindowOnManualArchive");
+      if (showWindowOnManualArchive) {
+        console.log("[Archibald] - showWindowOnManualArchive is enabled, opening Archibald tab.");
+        await openArchibaldWithData(data);
+        return;
+      }
+
+      const messages = data?.messages || (Array.isArray(data) ? data : []);
+      if (!messages || messages.length === 0) {
+        return;
+      }
+
+      console.log("[Archibald] - Starting silent background archiving of", messages.length, "message(s)...");
+      const count = await processArchiveMessages(messages);
+      console.log(`[Archibald] - Silent archive complete. ${count} message(s) moved.`);
+
+      // Notify any open Archibald tab of completion
+      try {
+        browser.runtime.sendMessage({ action: "manualArchiveCompleted", count }).catch(() => {});
+      } catch (_) {}
+    } catch (err) {
+      console.error("[Archibald] - Error during silent archive, falling back to window:", err);
+      await openArchibaldWithData(data);
+    }
+  }).catch(e => {
+    console.error("[Archibald] - Unexpected error in manual archive queue:", e);
+  });
 }
 
 // Lets be SURE by ANY mean that we are awake and listening
