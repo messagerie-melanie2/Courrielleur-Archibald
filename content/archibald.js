@@ -451,13 +451,30 @@ async function localyArchiveMessagesBeforeDate(sourceFolder, cutoffDate, account
   }
 
   // localFolderPath is like /Folder1/Sub1/Sub2
-  const decodedSourcePath = decodeLegacyFolderName(sourceFolder.path);
-  const localFolderPath = `Archives/${sanitizeFolderName(account.name)}${decodedSourcePath.replace("INBOX","Courrier entrant")}`;
+  const frenchSourcePath = translateFolderPathToFrench(sourceFolder.path, sourceFolder.name);
+  const localFolderPath = `Archives/${sanitizeFolderName(account.name)}${frenchSourcePath}`;
   //logLocalFolders();
   // We need to find the local folder by matching the true source folder path with the local folders names
   // because local folder ids might be abstracted by thunderbird in some cases
   // Like so: "/Archives/8f990b22/Courrier entrant"
-  const targetFolder = await getLocalFolder(account, localFolderPath);
+  let targetFolder = await getLocalFolder(account, localFolderPath);
+  if (!targetFolder)
+  {
+    archibaldLog(`Target local folder not found: ${localFolderPath}, creating it now...`);
+    const resolvedLocalAccount = localAccount || await getAccountLocalAccount(account, true);
+    if (resolvedLocalAccount)
+    {
+      const parts = localFolderPath.split("/").filter(Boolean);
+      let parentPath = "";
+      for (let i = 1; i < parts.length; i++)
+      {
+        const partName = sanitizeFolderName(getFrenchFolderName(parts[i]) || parts[i]);
+        await browser.archibaldApi.createArchiveLocalFolder(resolvedLocalAccount.id, partName, parentPath);
+        parentPath += partName + "/";
+      }
+      targetFolder = await getLocalFolder(account, localFolderPath);
+    }
+  }
   if (!targetFolder)
   {
     archibaldLog("Target local folder not found: " + localFolderPath);
@@ -624,9 +641,17 @@ document.getElementById("archive").addEventListener("click", async () =>
     {
       for (const folder of storedFoldersForSelectedAccount)
       {
-        // For each folder, move the messages to it's corresponding folder
-        // Move messages to their corresponding local folder
-        archiveCount += await localyArchiveMessagesBeforeDate(folder, cutoffDate, account, localAccount);
+        try
+        {
+          // For each folder, move the messages to it's corresponding folder
+          // Move messages to their corresponding local folder
+          archiveCount += await localyArchiveMessagesBeforeDate(folder, cutoffDate, account, localAccount);
+        }
+        catch (folderError)
+        {
+          console.error(`[Archibald] - An error occurred on folder "${folder?.name}": ` + (folderError?.message || folderError));
+          archibaldLog(`Error archiving folder "${folder?.name}": ` + (folderError?.message || folderError));
+        }
       }
     }
   }

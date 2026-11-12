@@ -63,7 +63,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   const blacklist = ["Archives", "Indésirables"];
   for (const folder of folders) {
     const decodedName = decodeLegacyFolderName(folder.name);
-    if (!blacklist.includes(folder.name) && !blacklist.includes(decodedName)) {
+    const frenchName = getFrenchFolderName(folder.name);
+    if (
+      !blacklist.includes(folder.name) &&
+      !blacklist.includes(decodedName) &&
+      !blacklist.includes(frenchName)
+    ) {
       // Si "Boite partagée" et le dossier fantôme MUTF-7 "Boite partag&AOk-e" coexistent, ignorer le fantôme
       if (hasExactBoitePartagee && isBoitePartageeFolder(folder) && folder.name !== "Boite partagée") {
         continue;
@@ -85,17 +90,22 @@ async function renderFolder(folder, container, level, storedFolders) {
 
   const decodedPath = decodeLegacyFolderName(folder.path);
   const decodedName = decodeLegacyFolderName(folder.name);
+  const frenchName = getFrenchFolderName(folder.name);
+  const frenchPath = translateFolderPathToFrench(folder.path, folder.name);
 
   let checked = true;
   // Default greylist folders to unchecked
-  const greylist = ["Corbeille", "Brouillons", "Modèles", "Éléments envoyés"];
+  const greylist = ["Corbeille", "Brouillons", "Modèles", "Éléments envoyés", "Envoyés"];
   const isGreylisted = greylist.some(
     g =>
       folder.path.includes(`/${g}/`) ||
       folder.path.endsWith(`/${g}`) ||
       decodedPath.includes(`/${g}/`) ||
       decodedPath.endsWith(`/${g}`) ||
-      decodedName === g
+      frenchPath.includes(`/${g}/`) ||
+      frenchPath.endsWith(`/${g}`) ||
+      decodedName === g ||
+      frenchName === g
   );
   if (isGreylisted)
     checked = false;
@@ -105,8 +115,10 @@ async function renderFolder(folder, container, level, storedFolders) {
       f =>
         f.path === folder.path ||
         decodeLegacyFolderName(f.path) === decodedPath ||
+        translateFolderPathToFrench(f.path, f.name) === frenchPath ||
         f.name === folder.name ||
-        decodeLegacyFolderName(f.name) === decodedName
+        decodeLegacyFolderName(f.name) === decodedName ||
+        getFrenchFolderName(f.name) === frenchName
     );
   }
 
@@ -114,14 +126,14 @@ async function renderFolder(folder, container, level, storedFolders) {
   checkbox.type = "checkbox";
   checkbox.checked = checked;
   checkbox.dataset.folder = JSON.stringify({
-    name: folder.name,
+    name: frenchName || decodedName || folder.name,
     path: folder.path,
     id: folder.id,
     accountId: folder.accountId
   });
 
   const labelContainer = document.createElement("div");
-  labelContainer.textContent = decodedName || folder.name;
+  labelContainer.textContent = frenchName || decodedName || folder.name;
   labelContainer.style.paddingLeft = `${level * 20}px`;
   labelContainer.style.flex = "1";
 
@@ -148,7 +160,7 @@ async function renderSharedFolder(folder, container, level = 0, storedFolders, f
   }
 
   // --- Skip root unused "Courrier entrant" (INBOX) itself but flatten its children ---
-  if ((folder.name === "Courrier entrant" || folder.path === "/INBOX") && !isEntrantBalp(folder)) {
+  if ((getFrenchFolderName(folder.name) === "Courrier entrant" || folder.path === "/INBOX") && !isEntrantBalp(folder)) {
     const subs = await browser.folders.getSubFolders(folder.id);
     for (const sub of subs) {
       // flatten only one level here
@@ -166,16 +178,21 @@ async function renderSharedFolder(folder, container, level = 0, storedFolders, f
 
   const decodedPath = decodeLegacyFolderName(folder.path);
   const decodedName = decodeLegacyFolderName(folder.name);
+  const frenchName = getFrenchFolderName(folder.name);
+  const frenchPath = translateFolderPathToFrench(folder.path, folder.name);
 
   let checked = true;
-  const greylist = ["Corbeille", "Brouillons", "Modèles", "Éléments envoyés"];
+  const greylist = ["Corbeille", "Brouillons", "Modèles", "Éléments envoyés", "Envoyés"];
   const isGreylisted = greylist.some(
     g =>
       folder.path.includes(`/${g}/`) ||
       folder.path.endsWith(`/${g}`) ||
       decodedPath.includes(`/${g}/`) ||
       decodedPath.endsWith(`/${g}`) ||
-      decodedName === g
+      frenchPath.includes(`/${g}/`) ||
+      frenchPath.endsWith(`/${g}`) ||
+      decodedName === g ||
+      frenchName === g
   );
   if (isGreylisted)
     checked = false;
@@ -185,8 +202,10 @@ async function renderSharedFolder(folder, container, level = 0, storedFolders, f
       f =>
         f.path === folder.path ||
         decodeLegacyFolderName(f.path) === decodedPath ||
+        translateFolderPathToFrench(f.path, f.name) === frenchPath ||
         f.name === folder.name ||
-        decodeLegacyFolderName(f.name) === decodedName
+        decodeLegacyFolderName(f.name) === decodedName ||
+        getFrenchFolderName(f.name) === frenchName
     );
   }
 
@@ -194,14 +213,14 @@ async function renderSharedFolder(folder, container, level = 0, storedFolders, f
   checkbox.type = "checkbox";
   checkbox.checked = checked;
   checkbox.dataset.folder = JSON.stringify({
-    name: folder.name,
+    name: isEntrantBalp(folder) ? "Courrier entrant" : (frenchName || decodedName || folder.name),
     path: folder.path,
     id: folder.id,
     accountId: folder.accountId
   });
 
   const labelContainer = document.createElement("div");
-  labelContainer.textContent = isEntrantBalp(folder) ? "Courrier entrant" : (decodedName || folder.name);
+  labelContainer.textContent = isEntrantBalp(folder) ? "Courrier entrant" : (frenchName || decodedName || folder.name);
   labelContainer.style.paddingLeft = `${renderLevel * 20}px`;
   labelContainer.style.flex = "1";
 

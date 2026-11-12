@@ -787,35 +787,41 @@ function cm2IsEntrantBalp(folder) {
 }
 
 function cm2EnsureBalpSubfolderFlags(subFolder) {
-  if (!subFolder) return;
+  if (!subFolder) return false;
   const decodedName = decodeImapFolderLabel(subFolder.name || "").trim();
   let flagToSet = 0;
-  switch (decodedName) {
-    case "Corbeille":
-    case "Trash":
+  switch (decodedName.toLowerCase()) {
+    case "corbeille":
+    case "trash":
       flagToSet = F.Trash;
       break;
-    case "Brouillons":
-    case "Drafts":
+    case "brouillons":
+    case "drafts":
+    case "draft":
       flagToSet = F.Drafts;
       break;
-    case "Éléments envoyés":
-    case "Elements envoyés":
-    case "Sent":
-    case "Sent Items":
+    case "éléments envoyés":
+    case "elements envoyés":
+    case "envoyés":
+    case "sent":
+    case "sent items":
+    case "sent messages":
       flagToSet = F.SentMail;
       break;
-    case "Modèles":
-    case "Modeles":
-    case "Templates":
+    case "modèles":
+    case "modeles":
+    case "templates":
+    case "template":
       flagToSet = F.Templates;
       break;
-    case "Indésirables":
-    case "Indesirables":
-    case "Junk":
+    case "indésirables":
+    case "indesirables":
+    case "junk":
+    case "spam":
       flagToSet = F.Junk;
       break;
-    case "Archives":
+    case "archives":
+    case "archive":
       flagToSet = F.Archive;
       break;
   }
@@ -826,8 +832,10 @@ function cm2EnsureBalpSubfolderFlags(subFolder) {
       } else {
         subFolder.flags |= flagToSet;
       }
+      return true;
     } catch (_) {}
   }
+  return false;
 }
 
 function cm2UpdateRowDepthRecursively(row, depth) {
@@ -876,15 +884,38 @@ function reparentSharedMailboxesCM2(about3PaneWin) {
 
     for (const account of MailServices.accounts.accounts) {
       const server = account?.incomingServer;
-      if (!server || server.hidden || !cm2IsServerBalp(server)) continue;
+      if (!server || server.hidden) continue;
 
       const rootFolder = server.rootFolder;
       if (!rootFolder) continue;
 
+      const rootSubFolders = [...(rootFolder.subFolders || [])];
+
+      // Pour les comptes IMAP standards (non-BALP), s'assurer que d'éventuels dossiers spéciaux en anglais
+      // (Drafts, Sent, Trash, Templates, Junk, Archives) ont bien leur flag spécial afin d'être affichés en français
+      if (!cm2IsServerBalp(server)) {
+        if (server.type === "imap") {
+          for (const subFolder of rootSubFolders) {
+            if (cm2EnsureBalpSubfolderFlags(subFolder)) {
+              const row = folderPane.getRowForFolder(subFolder, "all");
+              if (row) {
+                try {
+                  if (typeof row.setFolderTypeFromFolder === "function") {
+                    row.setFolderTypeFromFolder(subFolder);
+                  }
+                  if (typeof row.updateFolderNames === "function") {
+                    row.updateFolderNames(subFolder);
+                  }
+                } catch (_) {}
+              }
+            }
+          }
+        }
+        continue;
+      }
+
       const serverRow = folderPane.getRowForFolder(rootFolder, "all");
       if (!serverRow || !serverRow.childList) continue;
-
-      const rootSubFolders = [...(rootFolder.subFolders || [])];
 
       // 1. Trouver les dossiers conteneurs "Boite partagée" / "Boite partag&AOk-e"
       const bpFolders = rootSubFolders.filter(f => cm2IsDossierBoitePartage(f));
@@ -998,8 +1029,11 @@ function reparentSharedMailboxesCM2(about3PaneWin) {
       }
 
       // Assigner les flags spéciaux (Corbeille, Brouillons, Éléments envoyés, Modèles, Indésirables, Archives) avant le tri
+      const newlyFlaggedSubFolders = new Set();
       for (const subFolder of subFoldersToPromote) {
-        cm2EnsureBalpSubfolderFlags(subFolder);
+        if (cm2EnsureBalpSubfolderFlags(subFolder)) {
+          newlyFlaggedSubFolders.add(subFolder);
+        }
       }
 
       subFoldersToPromote.sort(FolderUtils.compareFolders);
@@ -1020,6 +1054,11 @@ function reparentSharedMailboxesCM2(about3PaneWin) {
         childRow.classList.remove("unselectable");
         if (typeof childRow.setFolderTypeFromFolder === "function") {
           childRow.setFolderTypeFromFolder(childFolder);
+        }
+        if (newlyFlaggedSubFolders.has(childFolder) && typeof childRow.updateFolderNames === "function") {
+          try {
+            childRow.updateFolderNames(childFolder);
+          } catch (_) {}
         }
 
         if (

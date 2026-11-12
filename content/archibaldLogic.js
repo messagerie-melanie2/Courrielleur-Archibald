@@ -95,6 +95,51 @@ function sanitizeFolderName(name) {
   return name;
 }
 
+const ENGLISH_TO_FRENCH_FOLDER_NAMES = {
+  "inbox": "Courrier entrant",
+  "drafts": "Brouillons",
+  "draft": "Brouillons",
+  "sent": "Envoyés",
+  "sent items": "Envoyés",
+  "sent messages": "Envoyés",
+  "trash": "Corbeille",
+  "deleted": "Corbeille",
+  "deleted items": "Corbeille",
+  "deleted messages": "Corbeille",
+  "templates": "Modèles",
+  "template": "Modèles",
+  "junk": "Indésirables",
+  "junk e-mail": "Indésirables",
+  "spam": "Indésirables",
+  "archives": "Archives",
+  "archive": "Archives",
+  "outbox": "Messages en attente",
+  "unsent messages": "Messages en attente"
+};
+
+function getFrenchFolderName(name) {
+  if (!name || typeof name !== "string") return "";
+  const decoded = decodeLegacyFolderName(name);
+  const lower = decoded.trim().toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(ENGLISH_TO_FRENCH_FOLDER_NAMES, lower)) {
+    return ENGLISH_TO_FRENCH_FOLDER_NAMES[lower];
+  }
+  return decoded;
+}
+
+function translateFolderPathToFrench(rawPath, leafFolderName = null) {
+  if (!rawPath || typeof rawPath !== "string") return "";
+  const parts = rawPath.split("/");
+  const translatedParts = parts.map((part, idx) => {
+    if (!part) return "";
+    if (leafFolderName && idx === parts.length - 1) {
+      return getFrenchFolderName(leafFolderName);
+    }
+    return getFrenchFolderName(part);
+  });
+  return translatedParts.join("/");
+}
+
 function parsePairs(str) {
   return (str || "").split("|").filter(Boolean).map(entry => {
     const [id, ...rest] = entry.split(",");
@@ -250,13 +295,18 @@ async function createLocalFolder(folder, localAccountId, parentPath, storedFolde
   const storedList = storedFolders || [];
   const decodedFolderPath = decodeLegacyFolderName(folder.path);
   const decodedFolderName = decodeLegacyFolderName(folder.name);
+  const frenchFolderName = getFrenchFolderName(folder.name);
+  const frenchFolderPath = translateFolderPathToFrench(folder.path, folder.name);
 
   const isFolderChecked = storedList.some(f =>
     f.name === folder.name ||
     decodeLegacyFolderName(f.name) === decodedFolderName ||
+    getFrenchFolderName(f.name) === frenchFolderName ||
     sanitizeFolderName(f.name) === sanitizeFolderName(folder.name) ||
+    sanitizeFolderName(getFrenchFolderName(f.name)) === sanitizeFolderName(frenchFolderName) ||
     f.path === folder.path ||
-    decodeLegacyFolderName(f.path) === decodedFolderPath
+    decodeLegacyFolderName(f.path) === decodedFolderPath ||
+    translateFolderPathToFrench(f.path, f.name) === frenchFolderPath
   );
 
   async function hasCheckedDescendants(currentFolder) {
@@ -264,12 +314,17 @@ async function createLocalFolder(folder, localAccountId, parentPath, storedFolde
     for (const sub of subFolders) {
       const decodedSubPath = decodeLegacyFolderName(sub.path);
       const decodedSubName = decodeLegacyFolderName(sub.name);
+      const frenchSubName = getFrenchFolderName(sub.name);
+      const frenchSubPath = translateFolderPathToFrench(sub.path, sub.name);
       if (storedList.some(f =>
         f.name === sub.name ||
         decodeLegacyFolderName(f.name) === decodedSubName ||
+        getFrenchFolderName(f.name) === frenchSubName ||
         sanitizeFolderName(f.name) === sanitizeFolderName(sub.name) ||
+        sanitizeFolderName(getFrenchFolderName(f.name)) === sanitizeFolderName(frenchSubName) ||
         f.path === sub.path ||
-        decodeLegacyFolderName(f.path) === decodedSubPath
+        decodeLegacyFolderName(f.path) === decodedSubPath ||
+        translateFolderPathToFrench(f.path, f.name) === frenchSubPath
       )) {
         return true;
       }
@@ -283,7 +338,7 @@ async function createLocalFolder(folder, localAccountId, parentPath, storedFolde
   const needsToBeCreated = isFolderChecked || await hasCheckedDescendants(folder);
 
   if (needsToBeCreated) {
-    const sanitizedFolderName = sanitizeFolderName(decodedFolderName || folder.name);
+    const sanitizedFolderName = sanitizeFolderName(frenchFolderName || decodedFolderName || folder.name);
     await browser.archibaldApi.createArchiveLocalFolder(localAccountId, sanitizedFolderName, parentPath);
     const newParentPath = parentPath + sanitizedFolderName + "/";
     const subFolders = await browser.folders.getSubFolders(folder.id);
@@ -312,7 +367,12 @@ async function createAccountLocalFolders(account, localAccount, pendingFolders) 
   const blacklist = ["Archives", "Indésirables"];
   for (const folder of folders) {
     const decodedName = decodeLegacyFolderName(folder.name);
-    if (!blacklist.includes(folder.name) && !blacklist.includes(decodedName)) {
+    const frenchName = getFrenchFolderName(folder.name);
+    if (
+      !blacklist.includes(folder.name) &&
+      !blacklist.includes(decodedName) &&
+      !blacklist.includes(frenchName)
+    ) {
       if (hasExactBoitePartagee && decodedName === "Boite partagée" && folder.name !== "Boite partagée") {
         continue;
       }
@@ -350,16 +410,39 @@ async function getLocalFolder(originalAccount, targetPath) {
     const nextPart = remainingParts[0];
 
     const decodedNextPart = decodeLegacyFolderName(nextPart);
+    const frenchNextPart = getFrenchFolderName(nextPart);
     const sanitizedNextPart = sanitizeFolderName(nextPart);
+    const sanitizedFrenchNextPart = sanitizeFolderName(frenchNextPart);
 
-    const nextFolder = subFolders.find(f =>
-      f.name === nextPart ||
-      f.name === decodedNextPart ||
-      f.name === sanitizedNextPart ||
-      f.name === decodeLegacyFolderName(sanitizedNextPart) ||
-      decodeLegacyFolderName(f.name) === decodedNextPart ||
-      decodeLegacyFolderName(f.name) === nextPart
-    );
+    // 1. Priorité à la correspondance exacte ou française (ex: "Brouillons", "Envoyés", "Éléments envoyés")
+    let nextFolder = subFolders.find(f => {
+      const fDecoded = decodeLegacyFolderName(f.name);
+      return (
+        f.name === nextPart ||
+        f.name === decodedNextPart ||
+        f.name === frenchNextPart ||
+        f.name === sanitizedNextPart ||
+        f.name === sanitizedFrenchNextPart ||
+        f.name === decodeLegacyFolderName(sanitizedNextPart) ||
+        fDecoded === decodedNextPart ||
+        fDecoded === frenchNextPart ||
+        fDecoded === nextPart
+      );
+    });
+
+    // 2. Équivalence "Envoyés" <-> "Éléments envoyés" ou dossier existant dont la traduction française correspond
+    if (!nextFolder) {
+      nextFolder = subFolders.find(f => {
+        const fDecoded = decodeLegacyFolderName(f.name);
+        const fFrench = getFrenchFolderName(f.name);
+        return (
+          fFrench === frenchNextPart ||
+          (frenchNextPart === "Envoyés" && fDecoded === "Éléments envoyés") ||
+          (frenchNextPart === "Éléments envoyés" && fDecoded === "Envoyés")
+        );
+      });
+    }
+
     if (!nextFolder) return null;
 
     return await findFolderByParts(nextFolder, remainingParts.slice(1));
@@ -381,7 +464,7 @@ async function setDefaultFoldersForAccount(accountId) {
     if (hasExactBoitePartagee && decodedRootName === "Boite partagée" && folder.name !== "Boite partagée") {
       continue;
     }
-    if (isBalp && (folder.path === "/INBOX" || folder.name === "Courrier entrant")) {
+    if (isBalp && (folder.path === "/INBOX" || getFrenchFolderName(folder.name) === "Courrier entrant")) {
       const subs = await browser.folders.getSubFolders(folder.id);
       for (const sub of subs) {
         await collect(sub);
@@ -393,20 +476,23 @@ async function setDefaultFoldersForAccount(accountId) {
 
   async function collect(folder) {
     const blacklist = ["Archives", "Indésirables"];
-    const greylist = ["Corbeille", "Brouillons", "Modèles", "Éléments envoyés"];
+    const greylist = ["Corbeille", "Brouillons", "Modèles", "Éléments envoyés", "Envoyés"];
     const decodedName = decodeLegacyFolderName(folder.name);
+    const frenchName = getFrenchFolderName(folder.name);
 
     if (
       !blacklist.includes(folder.name) &&
       !blacklist.includes(decodedName) &&
+      !blacklist.includes(frenchName) &&
       !greylist.includes(folder.name) &&
-      !greylist.includes(decodedName)
+      !greylist.includes(decodedName) &&
+      !greylist.includes(frenchName)
     ) {
       if (decodedName !== "Boite partagée") {
         archibaldLog("Collecting default folder:", folder.name);
 
         selectedFolders.push({
-          name: folder.name,
+          name: frenchName || folder.name,
           path: folder.path,
           id: folder.id,
           accountId: folder.accountId,
@@ -429,10 +515,11 @@ async function localyArchivePendingMessages(messages, account, currentPath) {
 
   archibaldLog("Archiving pending messages");
   const fallbackFolderName = currentPath ? currentPath.split("/").filter(Boolean).pop() : "Dossier";
-  const sourceFolderName = decodeLegacyFolderName(messages[0]?.folderName) || fallbackFolderName;
+  const sourceFolderName = getFrenchFolderName(messages[0]?.folderName) || getFrenchFolderName(fallbackFolderName);
   let archiveCount = 0;
 
-  const localFolderPath = `Archives/${sanitizeFolderName(account.name)}${currentPath.replace("INBOX", "Courrier entrant")}`;
+  const frenchPath = translateFolderPathToFrench(currentPath, messages[0]?.folderName);
+  const localFolderPath = `Archives/${sanitizeFolderName(account.name)}${frenchPath}`;
 
   let targetFolder = await getLocalFolder(account, localFolderPath);
   if (!targetFolder) {
@@ -442,7 +529,7 @@ async function localyArchivePendingMessages(messages, account, currentPath) {
       const parts = localFolderPath.split("/").filter(Boolean);
       let parentPath = "";
       for (let i = 1; i < parts.length; i++) {
-        const partName = sanitizeFolderName(parts[i]);
+        const partName = sanitizeFolderName(getFrenchFolderName(parts[i]) || parts[i]);
         await browser.archibaldApi.createArchiveLocalFolder(localAccount.id, partName, parentPath);
         parentPath += partName + "/";
       }
@@ -528,9 +615,9 @@ async function processArchiveMessages(messages) {
       let currentPath = "";
 
       pendingMessageFolders.forEach((folderName, index) => {
-        let decodedName = decodeLegacyFolderName(folderName);
+        let decodedName = getFrenchFolderName(folderName);
         if (index === pendingMessageFolders.length - 1 && folderMessages[0]?.folderName) {
-          decodedName = decodeLegacyFolderName(folderMessages[0].folderName);
+          decodedName = getFrenchFolderName(folderMessages[0].folderName);
         }
         currentPath += "/" + decodedName;
         let folder = {
@@ -540,7 +627,15 @@ async function processArchiveMessages(messages) {
           accountId: accountId
         };
 
-        if (!pendingFolders.some(f => f.name === folder.name || f.path === folder.path)) {
+        if (
+          !pendingFolders.some(
+            f =>
+              f.name === folder.name ||
+              getFrenchFolderName(f.name) === folder.name ||
+              f.path === folder.path ||
+              translateFolderPathToFrench(f.path, f.name) === folder.path
+          )
+        ) {
           pendingFolders.push(folder);
         }
       });
