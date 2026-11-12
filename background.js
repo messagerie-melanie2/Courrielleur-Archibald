@@ -129,14 +129,14 @@ function messageListener(data) {
 async function waitForMailTabAndRun() {
   const tabs = await browser.tabs.query({});
   for (const tab of tabs) {
-    if (tab.mailTab) {
+    if (tab.mailTab || tab.type === "mail") {
       archibaldInit();
       return;
     }
   }
   // Wait until a mail tab is created
   browser.tabs.onCreated.addListener(async (tab) => {
-    if (tab.mailTab) {
+    if (tab.mailTab || tab.type === "mail") {
       archibaldInit();
     }
   });

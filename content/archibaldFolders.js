@@ -54,12 +54,22 @@ document.addEventListener("DOMContentLoaded", async () => {
   //console.log(account.identities[0].email);
   // Start populating from root folders
   const folders = await browser.folders.getSubFolders(accountId);
+  const isBalp =
+    account.identities?.some(id => id?.email?.includes(BALP_ID)) ||
+    folders.some(f => isBoitePartageeFolder(f));
+  const hasExactBoitePartagee = folders.some(f => f.name === "Boite partagée");
+
   // Do not render some default folders
   const blacklist = ["Archives", "Indésirables"];
   for (const folder of folders) {
-    if (!blacklist.includes(folder.name)) {
+    const decodedName = decodeLegacyFolderName(folder.name);
+    if (!blacklist.includes(folder.name) && !blacklist.includes(decodedName)) {
+      // Si "Boite partagée" et le dossier fantôme MUTF-7 "Boite partag&AOk-e" coexistent, ignorer le fantôme
+      if (hasExactBoitePartagee && isBoitePartageeFolder(folder) && folder.name !== "Boite partagée") {
+        continue;
+      }
       // Affichage modifié pour les BALP
-      if(account.identities[0].email.includes(BALP_ID))
+      if (isBalp)
         await renderSharedFolder(folder, folderListContainer, 0, storedData[accountId], false);
       else
         await renderFolder(folder, folderListContainer, 0, storedData[accountId]);
@@ -73,15 +83,32 @@ async function renderFolder(folder, container, level, storedFolders) {
   const item = document.createElement("div");
   item.className = "folder-item";
 
+  const decodedPath = decodeLegacyFolderName(folder.path);
+  const decodedName = decodeLegacyFolderName(folder.name);
+
   let checked = true;
   // Default greylist folders to unchecked
   const greylist = ["Corbeille", "Brouillons", "Modèles", "Éléments envoyés"];
-  const isGreylisted = greylist.some(item => folder.path.includes(`/${item}/`) || folder.path.endsWith(`/${item}`));
+  const isGreylisted = greylist.some(
+    g =>
+      folder.path.includes(`/${g}/`) ||
+      folder.path.endsWith(`/${g}`) ||
+      decodedPath.includes(`/${g}/`) ||
+      decodedPath.endsWith(`/${g}`) ||
+      decodedName === g
+  );
   if (isGreylisted)
     checked = false;
 
-  if (storedFolders)
-    checked = storedFolders.some(f => f.name === folder.name);
+  if (storedFolders) {
+    checked = storedFolders.some(
+      f =>
+        f.path === folder.path ||
+        decodeLegacyFolderName(f.path) === decodedPath ||
+        f.name === folder.name ||
+        decodeLegacyFolderName(f.name) === decodedName
+    );
+  }
 
   const checkbox = document.createElement("input");
   checkbox.type = "checkbox";
@@ -94,7 +121,7 @@ async function renderFolder(folder, container, level, storedFolders) {
   });
 
   const labelContainer = document.createElement("div");
-  labelContainer.textContent = folder.name;
+  labelContainer.textContent = decodedName || folder.name;
   labelContainer.style.paddingLeft = `${level * 20}px`;
   labelContainer.style.flex = "1";
 
@@ -111,7 +138,7 @@ async function renderFolder(folder, container, level, storedFolders) {
 
 async function renderSharedFolder(folder, container, level = 0, storedFolders, flattenOneLevel) {
   // --- Skip technical "Boite partagée" placeholder ---
-  if (folder.name === "Boite partagée") {
+  if (isBoitePartageeFolder(folder)) {
     const subs = await browser.folders.getSubFolders(folder.id);
     for (const sub of subs) {
       // when diving into children, enable one-level flattening
@@ -120,8 +147,8 @@ async function renderSharedFolder(folder, container, level = 0, storedFolders, f
     return;
   }
 
-  // --- Skip "Courrier entrant" itself but flatten its children ---
-  if (folder.name === "Courrier entrant") {
+  // --- Skip root unused "Courrier entrant" (INBOX) itself but flatten its children ---
+  if ((folder.name === "Courrier entrant" || folder.path === "/INBOX") && !isEntrantBalp(folder)) {
     const subs = await browser.folders.getSubFolders(folder.id);
     for (const sub of subs) {
       // flatten only one level here
@@ -137,14 +164,30 @@ async function renderSharedFolder(folder, container, level = 0, storedFolders, f
   const item = document.createElement("div");
   item.className = "folder-item";
 
+  const decodedPath = decodeLegacyFolderName(folder.path);
+  const decodedName = decodeLegacyFolderName(folder.name);
+
   let checked = true;
   const greylist = ["Corbeille", "Brouillons", "Modèles", "Éléments envoyés"];
-  const isGreylisted = greylist.some(item => folder.path.includes(`/${item}/`) || folder.path.endsWith(`/${item}`));
+  const isGreylisted = greylist.some(
+    g =>
+      folder.path.includes(`/${g}/`) ||
+      folder.path.endsWith(`/${g}`) ||
+      decodedPath.includes(`/${g}/`) ||
+      decodedPath.endsWith(`/${g}`) ||
+      decodedName === g
+  );
   if (isGreylisted)
     checked = false;
 
   if (storedFolders) {
-    checked = storedFolders.some(f => f.name === folder.name);
+    checked = storedFolders.some(
+      f =>
+        f.path === folder.path ||
+        decodeLegacyFolderName(f.path) === decodedPath ||
+        f.name === folder.name ||
+        decodeLegacyFolderName(f.name) === decodedName
+    );
   }
 
   const checkbox = document.createElement("input");
@@ -158,7 +201,7 @@ async function renderSharedFolder(folder, container, level = 0, storedFolders, f
   });
 
   const labelContainer = document.createElement("div");
-  labelContainer.textContent = isEntrantBalp(folder) ? "Courrier entrant" : folder.name;
+  labelContainer.textContent = isEntrantBalp(folder) ? "Courrier entrant" : (decodedName || folder.name);
   labelContainer.style.paddingLeft = `${renderLevel * 20}px`;
   labelContainer.style.flex = "1";
 
@@ -170,17 +213,25 @@ async function renderSharedFolder(folder, container, level = 0, storedFolders, f
   const subFolders = await browser.folders.getSubFolders(folder.id);
   for (const sub of subFolders) {
     // Once we pass the first flattened level, go back to normal indentation
-    if(isEntrantBalp(folder))
+    if (isEntrantBalp(folder))
       await renderSharedFolder(sub, container, renderLevel, storedFolders, false);
     else
       await renderSharedFolder(sub, container, renderLevel + 1, storedFolders, false);
   }
 }
 
+function isBoitePartageeFolder(folder)
+{
+  if (!folder || !folder.name) return false;
+  return folder.name === "Boite partagée" || decodeLegacyFolderName(folder.name) === "Boite partagée";
+}
+
 function isEntrantBalp(folder)
 {
+  if (!folder || !folder.path) return false;
   // length == 3 because we are looking for this folder "/Boite partagée/sg.snum...""
-  if(folder.path.split("/").length == 3 && folder.path.includes("Boite partag"))
+  const decodedPath = decodeLegacyFolderName(folder.path);
+  if (decodedPath.split("/").length === 3 && decodedPath.includes("Boite partag"))
     return true;
   return false;
 }

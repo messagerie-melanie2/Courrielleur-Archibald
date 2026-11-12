@@ -248,21 +248,28 @@ async function getAccountLocalAccount(originalAccount, forceCreation) {
 
 async function createLocalFolder(folder, localAccountId, parentPath, storedFolders) {
   const storedList = storedFolders || [];
+  const decodedFolderPath = decodeLegacyFolderName(folder.path);
+  const decodedFolderName = decodeLegacyFolderName(folder.name);
+
   const isFolderChecked = storedList.some(f =>
     f.name === folder.name ||
-    decodeLegacyFolderName(f.name) === decodeLegacyFolderName(folder.name) ||
+    decodeLegacyFolderName(f.name) === decodedFolderName ||
     sanitizeFolderName(f.name) === sanitizeFolderName(folder.name) ||
-    f.path === folder.path
+    f.path === folder.path ||
+    decodeLegacyFolderName(f.path) === decodedFolderPath
   );
 
   async function hasCheckedDescendants(currentFolder) {
     const subFolders = await browser.folders.getSubFolders(currentFolder.id);
     for (const sub of subFolders) {
+      const decodedSubPath = decodeLegacyFolderName(sub.path);
+      const decodedSubName = decodeLegacyFolderName(sub.name);
       if (storedList.some(f =>
         f.name === sub.name ||
-        decodeLegacyFolderName(f.name) === decodeLegacyFolderName(sub.name) ||
+        decodeLegacyFolderName(f.name) === decodedSubName ||
         sanitizeFolderName(f.name) === sanitizeFolderName(sub.name) ||
-        f.path === sub.path
+        f.path === sub.path ||
+        decodeLegacyFolderName(f.path) === decodedSubPath
       )) {
         return true;
       }
@@ -276,7 +283,7 @@ async function createLocalFolder(folder, localAccountId, parentPath, storedFolde
   const needsToBeCreated = isFolderChecked || await hasCheckedDescendants(folder);
 
   if (needsToBeCreated) {
-    const sanitizedFolderName = sanitizeFolderName(folder.name);
+    const sanitizedFolderName = sanitizeFolderName(decodedFolderName || folder.name);
     await browser.archibaldApi.createArchiveLocalFolder(localAccountId, sanitizedFolderName, parentPath);
     const newParentPath = parentPath + sanitizedFolderName + "/";
     const subFolders = await browser.folders.getSubFolders(folder.id);
@@ -301,9 +308,14 @@ async function createAccountLocalFolders(account, localAccount, pendingFolders) 
   const parentPath = sanitizeFolderName(account.name) + "/";
 
   const folders = await browser.folders.getSubFolders(account.id);
+  const hasExactBoitePartagee = folders.some(f => f.name === "Boite partagée");
   const blacklist = ["Archives", "Indésirables"];
   for (const folder of folders) {
-    if (!blacklist.includes(folder.name)) {
+    const decodedName = decodeLegacyFolderName(folder.name);
+    if (!blacklist.includes(folder.name) && !blacklist.includes(decodedName)) {
+      if (hasExactBoitePartagee && decodedName === "Boite partagée" && folder.name !== "Boite partagée") {
+        continue;
+      }
       await createLocalFolder(folder, localAccount.id, parentPath, pendingFolders ? pendingFolders : storedData[account.id]);
     }
   }
@@ -358,25 +370,48 @@ async function setDefaultFoldersForAccount(accountId) {
   const account = await browser.accounts.get(accountId);
   archibaldLog("Setting default folders for account: " + accountId);
   const folders = await browser.folders.getSubFolders(accountId);
+  const isBalp =
+    account?.identities?.some(id => id?.email?.includes(".-.")) ||
+    folders.some(f => decodeLegacyFolderName(f.name) === "Boite partagée");
+  const hasExactBoitePartagee = folders.some(f => f.name === "Boite partagée");
 
   const selectedFolders = [];
   for (const folder of folders) {
+    const decodedRootName = decodeLegacyFolderName(folder.name);
+    if (hasExactBoitePartagee && decodedRootName === "Boite partagée" && folder.name !== "Boite partagée") {
+      continue;
+    }
+    if (isBalp && (folder.path === "/INBOX" || folder.name === "Courrier entrant")) {
+      const subs = await browser.folders.getSubFolders(folder.id);
+      for (const sub of subs) {
+        await collect(sub);
+      }
+      continue;
+    }
     await collect(folder);
   }
 
   async function collect(folder) {
     const blacklist = ["Archives", "Indésirables"];
     const greylist = ["Corbeille", "Brouillons", "Modèles", "Éléments envoyés"];
+    const decodedName = decodeLegacyFolderName(folder.name);
 
-    if (!blacklist.includes(folder.name) && !greylist.includes(folder.name)) {
-      archibaldLog("Collecting default folder:", folder.name);
+    if (
+      !blacklist.includes(folder.name) &&
+      !blacklist.includes(decodedName) &&
+      !greylist.includes(folder.name) &&
+      !greylist.includes(decodedName)
+    ) {
+      if (decodedName !== "Boite partagée") {
+        archibaldLog("Collecting default folder:", folder.name);
 
-      selectedFolders.push({
-        name: folder.name,
-        path: folder.path,
-        id: folder.id,
-        accountId: folder.accountId,
-      });
+        selectedFolders.push({
+          name: folder.name,
+          path: folder.path,
+          id: folder.id,
+          accountId: folder.accountId,
+        });
+      }
 
       const subFolders = await browser.folders.getSubFolders(folder.id);
       for (const sub of subFolders) {

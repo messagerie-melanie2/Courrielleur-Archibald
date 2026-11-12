@@ -451,7 +451,8 @@ async function localyArchiveMessagesBeforeDate(sourceFolder, cutoffDate, account
   }
 
   // localFolderPath is like /Folder1/Sub1/Sub2
-  const localFolderPath = `Archives/${sanitizeFolderName(account.name)}${sourceFolder.path.replace("INBOX","Courrier entrant")}`;
+  const decodedSourcePath = decodeLegacyFolderName(sourceFolder.path);
+  const localFolderPath = `Archives/${sanitizeFolderName(account.name)}${decodedSourcePath.replace("INBOX","Courrier entrant")}`;
   //logLocalFolders();
   // We need to find the local folder by matching the true source folder path with the local folders names
   // because local folder ids might be abstracted by thunderbird in some cases

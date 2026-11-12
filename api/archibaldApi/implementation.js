@@ -1,10 +1,11 @@
 var { classes: Cc, interfaces: Ci } = Components;
 
-// ESM imports that should work in TB 115+/128/140+
+// ESM imports that should work in TB 115+/128/140+/153+
 const { ExtensionCommon } = ChromeUtils.importESModule("resource://gre/modules/ExtensionCommon.sys.mjs");
 const { MailServices } = globalThis.MailServices
   ? globalThis
   : ChromeUtils.importESModule("resource:///modules/MailServices.sys.mjs");
+const { FolderUtils } = ChromeUtils.importESModule("resource:///modules/FolderUtils.sys.mjs");
 
 // Use Window Mediator via XPCOM (avoids Services import)
 const WM = Cc["@mozilla.org/appshell/window-mediator;1"].getService(Ci.nsIWindowMediator);
@@ -707,7 +708,583 @@ function setupSpacesToolbarObserver(w) {
     console.error("[Archibald] Erreur dans setupSpacesToolbarObserver:", err);
   }
 }
+
+// ================================= GESTION AFFICHAGE BALP (about:3pane) ============================================
+const CM2_BOITE_PARTAGEE = "Boite partagée";
+const CM2_BOITE_PARTAGEE_MUTF7 = "Boite partag&AOk-e";
+const CM2_COURRIER_ENTRANT = "Courrier entrant";
+
+function decodeImapFolderLabel(str) {
+  if (!str || typeof str !== "string") return "";
+  try {
+    str = decodeURIComponent(str);
+  } catch (_) {
+    str = str.replace(/%20/g, " ");
+  }
+  return str.replace(/&([^-]*)-/g, (match, b64) => {
+    if (b64 === "") return "&";
+    try {
+      let base64 = b64.replace(/,/g, "/");
+      while (base64.length % 4 !== 0) base64 += "=";
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return new TextDecoder("utf-16be").decode(bytes);
+    } catch (_) {
+      return match;
+    }
+  });
+}
+
+function cm2IsDossierBoitePartage(folder) {
+  if (!folder) return false;
+  const name = folder.name || "";
+  if (name === CM2_BOITE_PARTAGEE || name === CM2_BOITE_PARTAGEE_MUTF7) return true;
+  if (decodeImapFolderLabel(name) === CM2_BOITE_PARTAGEE) return true;
+  return false;
+}
+
+function cm2IsServerBalp(server) {
+  if (!server) return false;
+  try {
+    if (server.username && server.username.includes(".-.")) return true;
+  } catch (_) {}
+  try {
+    if (typeof server.getStringValue === "function" && server.getStringValue("pacome.confid") === "par1") {
+      return true;
+    }
+  } catch (_) {}
+  try {
+    const subs = server.rootFolder?.subFolders || [];
+    for (const f of subs) {
+      if (cm2IsDossierBoitePartage(f)) return true;
+    }
+  } catch (_) {}
+  return false;
+}
+
+function cm2IsFolderBalp(folder) {
+  try {
+    return !!(folder && folder.server && cm2IsServerBalp(folder.server));
+  } catch (_) {
+    return false;
+  }
+}
+
+function cm2IsEntrantBalp(folder) {
+  try {
+    return !!(
+      folder &&
+      cm2IsFolderBalp(folder) &&
+      folder.parent &&
+      cm2IsDossierBoitePartage(folder.parent)
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
+function cm2EnsureBalpSubfolderFlags(subFolder) {
+  if (!subFolder) return;
+  const decodedName = decodeImapFolderLabel(subFolder.name || "").trim();
+  let flagToSet = 0;
+  switch (decodedName) {
+    case "Corbeille":
+    case "Trash":
+      flagToSet = F.Trash;
+      break;
+    case "Brouillons":
+    case "Drafts":
+      flagToSet = F.Drafts;
+      break;
+    case "Éléments envoyés":
+    case "Elements envoyés":
+    case "Sent":
+    case "Sent Items":
+      flagToSet = F.SentMail;
+      break;
+    case "Modèles":
+    case "Modeles":
+    case "Templates":
+      flagToSet = F.Templates;
+      break;
+    case "Indésirables":
+    case "Indesirables":
+    case "Junk":
+      flagToSet = F.Junk;
+      break;
+    case "Archives":
+      flagToSet = F.Archive;
+      break;
+  }
+  if (flagToSet && !(subFolder.flags & flagToSet)) {
+    try {
+      if (typeof subFolder.setFlag === "function") {
+        subFolder.setFlag(flagToSet);
+      } else {
+        subFolder.flags |= flagToSet;
+      }
+    } catch (_) {}
+  }
+}
+
+function cm2UpdateRowDepthRecursively(row, depth) {
+  if (!row) return;
+  try {
+    row.depth = depth;
+    if (row.childList) {
+      row.childList.style.setProperty("--depth", depth);
+      for (const child of row.childList.children) {
+        if (child && child.tagName === "LI") {
+          cm2UpdateRowDepthRecursively(child, depth + 1);
+        }
+      }
+    }
+  } catch (_) {}
+}
+
+function cm2HideRowAndDescendants(row) {
+  if (!row) return false;
+  let changed = false;
+  if (row.style.display !== "none") {
+    row.style.display = "none";
+    changed = true;
+  }
+  if (!row.classList.contains("unselectable") || !row.classList.contains("collapsed")) {
+    row.classList.add("unselectable", "collapsed");
+    changed = true;
+  }
+  for (const desc of row.querySelectorAll("li")) {
+    if (desc.style.display !== "none") {
+      desc.style.display = "none";
+      changed = true;
+    }
+    desc.classList.add("unselectable", "collapsed");
+  }
+  return changed;
+}
+
+function reparentSharedMailboxesCM2(about3PaneWin) {
+  try {
+    if (!about3PaneWin || about3PaneWin.closed) return;
+    const { folderPane, folderTree } = about3PaneWin;
+    if (!folderPane || !folderTree || !folderPane._modes?.all?.active) return;
+
+    let domModified = false;
+
+    for (const account of MailServices.accounts.accounts) {
+      const server = account?.incomingServer;
+      if (!server || server.hidden || !cm2IsServerBalp(server)) continue;
+
+      const rootFolder = server.rootFolder;
+      if (!rootFolder) continue;
+
+      const serverRow = folderPane.getRowForFolder(rootFolder, "all");
+      if (!serverRow || !serverRow.childList) continue;
+
+      const rootSubFolders = [...(rootFolder.subFolders || [])];
+
+      // 1. Trouver les dossiers conteneurs "Boite partagée" / "Boite partag&AOk-e"
+      const bpFolders = rootSubFolders.filter(f => cm2IsDossierBoitePartage(f));
+      if (bpFolders.length === 0) continue;
+
+      // Prioriser le vrai dossier "Boite partagée" (UTF-8) par rapport au dossier fantôme MUTF-7 "Boite partag&AOk-e"
+      bpFolders.sort((a, b) => {
+        const aExact = a.name === CM2_BOITE_PARTAGEE ? 0 : 1;
+        const bExact = b.name === CM2_BOITE_PARTAGEE ? 0 : 1;
+        if (aExact !== bExact) return aExact - bExact;
+        const aSubs = (a.subFolders || []).length;
+        const bSubs = (b.subFolders || []).length;
+        return bSubs - aSubs;
+      });
+
+      // 2. Identifier le dossier BALP Entrant principal et les éventuels doublons fantômes
+      let primaryEntrant = null;
+      const secondaryEntrants = [];
+
+      for (const bpFolder of bpFolders) {
+        const children = [...(bpFolder.subFolders || [])];
+        for (const child of children) {
+          if (!cm2IsEntrantBalp(child)) continue;
+          if (!primaryEntrant) {
+            primaryEntrant = child;
+          } else {
+            secondaryEntrants.push(child);
+          }
+        }
+      }
+
+      if (!primaryEntrant) continue;
+
+      // 3. Configurer le dossier BALP Entrant principal en tant que "Courrier entrant" (Inbox)
+      try {
+        if (!(primaryEntrant.flags & F.Inbox)) {
+          if (typeof primaryEntrant.setFlag === "function") {
+            primaryEntrant.setFlag(F.Inbox);
+          } else {
+            primaryEntrant.flags |= F.Inbox;
+          }
+        }
+      } catch (_) {}
+
+      const anchorRow = folderPane.getRowForFolder(primaryEntrant, "all");
+      if (!anchorRow) continue;
+
+      // Surcharger updateFolderNames et setFolderTypeFromFolder sur anchorRow pour conserver le libellé "Courrier entrant" et l'icône Inbox
+      if (!anchorRow._archibaldBalpInboxWrapped) {
+        if (typeof anchorRow.updateFolderNames === "function") {
+          const origUpdateFolderNames = anchorRow.updateFolderNames.bind(anchorRow);
+          anchorRow.updateFolderNames = function(folder) {
+            try { origUpdateFolderNames(folder); } catch (_) {}
+            this._folderName = CM2_COURRIER_ENTRANT;
+            this._fullFolderName = CM2_COURRIER_ENTRANT;
+            this.dataset.folderType = "inbox";
+            if (typeof this._setName === "function") {
+              this._setName();
+            } else {
+              this.name = CM2_COURRIER_ENTRANT;
+            }
+          };
+        }
+        if (typeof anchorRow.setFolderTypeFromFolder === "function") {
+          const origSetFolderType = anchorRow.setFolderTypeFromFolder.bind(anchorRow);
+          anchorRow.setFolderTypeFromFolder = function(folder) {
+            try { origSetFolderType(folder); } catch (_) {}
+            this.dataset.folderType = "inbox";
+          };
+        }
+        anchorRow._archibaldBalpInboxWrapped = true;
+      }
+
+      if (anchorRow.style.display === "none") {
+        anchorRow.style.display = "";
+        domModified = true;
+      }
+      anchorRow.classList.remove("unselectable");
+      anchorRow.dataset.folderType = "inbox";
+      anchorRow._folderName = CM2_COURRIER_ENTRANT;
+      anchorRow._fullFolderName = CM2_COURRIER_ENTRANT;
+      if (typeof anchorRow._setName === "function") {
+        anchorRow._setName();
+      } else {
+        anchorRow.name = CM2_COURRIER_ENTRANT;
+      }
+
+      // Placer "Courrier entrant" (anchorRow) en tête des dossiers du serveur
+      if (
+        anchorRow.parentElement !== serverRow.childList ||
+        serverRow.childList.firstElementChild !== anchorRow
+      ) {
+        serverRow.childList.insertBefore(anchorRow, serverRow.childList.firstElementChild);
+        domModified = true;
+      }
+
+      // 4. Collecter les sous-dossiers de primaryEntrant (et ceux non-dupliqués des secondaryEntrants)
+      const subFoldersToPromote = [...(primaryEntrant.subFolders || [])];
+      const seenDecodedNames = new Set(
+        subFoldersToPromote.map(f => decodeImapFolderLabel(f.name || "").toLowerCase())
+      );
+
+      for (const secEntrant of secondaryEntrants) {
+        for (const secSub of (secEntrant.subFolders || [])) {
+          const decodedSecName = decodeImapFolderLabel(secSub.name || "").toLowerCase();
+          if (!seenDecodedNames.has(decodedSecName)) {
+            seenDecodedNames.add(decodedSecName);
+            subFoldersToPromote.push(secSub);
+          }
+        }
+      }
+
+      // Assigner les flags spéciaux (Corbeille, Brouillons, Éléments envoyés, Modèles, Indésirables, Archives) avant le tri
+      for (const subFolder of subFoldersToPromote) {
+        cm2EnsureBalpSubfolderFlags(subFolder);
+      }
+
+      subFoldersToPromote.sort(FolderUtils.compareFolders);
+
+      // 5. Remonter tous les sous-dossiers directement sous serverRow.childList, juste après anchorRow
+      const baseDepth = (serverRow.depth || 1) + 1;
+      cm2UpdateRowDepthRecursively(anchorRow, baseDepth);
+
+      let prevRow = anchorRow;
+      for (const childFolder of subFoldersToPromote) {
+        const childRow = folderPane.getRowForFolder(childFolder, "all");
+        if (!childRow) continue;
+
+        if (childRow.style.display === "none") {
+          childRow.style.display = "";
+          domModified = true;
+        }
+        childRow.classList.remove("unselectable");
+        if (typeof childRow.setFolderTypeFromFolder === "function") {
+          childRow.setFolderTypeFromFolder(childFolder);
+        }
+
+        if (
+          childRow.parentElement !== serverRow.childList ||
+          prevRow.nextElementSibling !== childRow
+        ) {
+          serverRow.childList.insertBefore(childRow, prevRow.nextElementSibling);
+          domModified = true;
+        }
+        cm2UpdateRowDepthRecursively(childRow, baseDepth);
+        prevRow = childRow;
+      }
+
+      // 6. Masquer les conteneurs "Boite partagée" / "Boite partag&AOk-e" et leurs éventuels enfants restants (fantômes)
+      for (const bpFolder of bpFolders) {
+        const bpRow = folderPane.getRowForFolder(bpFolder, "all");
+        if (bpRow && cm2HideRowAndDescendants(bpRow)) {
+          domModified = true;
+        }
+      }
+
+      // 7. Nettoyer l'état de anchorRow (qui est maintenant une feuille sans sous-dossiers dans l'arbre)
+      if (anchorRow.classList.contains("children") || anchorRow.classList.contains("collapsed")) {
+        anchorRow.classList.remove("children", "collapsed");
+        anchorRow.removeAttribute("aria-expanded");
+        domModified = true;
+      }
+      try {
+        if (typeof anchorRow.updateUnreadMessageCount === "function") {
+          anchorRow.updateUnreadMessageCount();
+        }
+        if (typeof anchorRow.updateTotalMessageCount === "function") {
+          anchorRow.updateTotalMessageCount();
+        }
+        if (typeof anchorRow.updateNewMessages === "function") {
+          anchorRow.updateNewMessages();
+        }
+      } catch (_) {}
+
+      // 8. Masquer le dossier INBOX racine inutilisé du compte BALP
+      const unusedInboxFolder = rootSubFolders.find(
+        f =>
+          f !== primaryEntrant &&
+          !cm2IsDossierBoitePartage(f) &&
+          (f.name.toUpperCase() === "INBOX" ||
+           f.localizedName === CM2_COURRIER_ENTRANT ||
+           Boolean(f.flags & F.Inbox))
+      );
+      if (unusedInboxFolder) {
+        const inboxRow = folderPane.getRowForFolder(unusedInboxFolder, "all");
+        if (inboxRow && inboxRow !== anchorRow) {
+          const wasSelected = folderTree.selectedRow === inboxRow;
+          if (cm2HideRowAndDescendants(inboxRow)) {
+            domModified = true;
+          }
+          if (wasSelected) {
+            try {
+              if (typeof about3PaneWin.displayFolder === "function") {
+                about3PaneWin.displayFolder(primaryEntrant.URI);
+              } else {
+                folderTree.selectedRow = anchorRow;
+              }
+            } catch (_) {}
+          }
+        }
+      }
+
+      // S'assurer que la liste d'enfants du serveur est visible s'il n'est pas replié
+      if (!serverRow.classList.contains("collapsed") && serverRow.childList) {
+        serverRow.childList.hidden = false;
+        serverRow.childList.style.height = "";
+      }
+    }
+
+    if (domModified) {
+      try {
+        if (typeof folderTree.domChanged === "function") {
+          folderTree.domChanged();
+        }
+        if (typeof folderTree._initRows === "function") {
+          folderTree._initRows();
+        }
+      } catch (_) {}
+    }
+
+    // Mettre à jour l'en-tête de la liste de messages si le dossier BALP entrant est sélectionné
+    try {
+      if (about3PaneWin.gFolder && cm2IsEntrantBalp(about3PaneWin.gFolder)) {
+        if (about3PaneWin.threadPaneHeader?.folderName) {
+          about3PaneWin.threadPaneHeader.folderName.textContent = CM2_COURRIER_ENTRANT;
+        }
+        about3PaneWin.document.title = `${CM2_COURRIER_ENTRANT} - ${about3PaneWin.gFolder.server.prettyName}`;
+      }
+    } catch (_) {}
+  } catch (e) {
+    console.error("[Archibald] Erreur dans reparentSharedMailboxesCM2:", e);
+  }
+}
+
+function scheduleReparent(about3PaneWin, delay = 0) {
+  if (!about3PaneWin || about3PaneWin.closed) return;
+  if (delay <= 0) {
+    reparentSharedMailboxesCM2(about3PaneWin);
+    return;
+  }
+  about3PaneWin.setTimeout(() => {
+    if (!about3PaneWin.closed) {
+      reparentSharedMailboxesCM2(about3PaneWin);
+    }
+  }, delay);
+}
+
+function setupAbout3PaneBalpHooks(about3PaneWin) {
+  try {
+    if (!about3PaneWin || about3PaneWin.closed) return;
+    const href = about3PaneWin.location?.href || "";
+    if (!href.startsWith("about:3pane")) return;
+
+    const { folderPane, folderTree } = about3PaneWin;
+    if (!folderPane || !folderTree || !folderPane._initialized) {
+      about3PaneWin.setTimeout(() => setupAbout3PaneBalpHooks(about3PaneWin), 150);
+      return;
+    }
+
+    if (!about3PaneWin._archibald_balp_hooks_installed) {
+      about3PaneWin._archibald_balp_hooks_installed = true;
+
+      // 1. Intercepter folderPane._modes.all.initServer
+      if (folderPane._modes?.all && typeof folderPane._modes.all.initServer === "function") {
+        const allMode = folderPane._modes.all;
+        allMode._archibald_orig_initServer = allMode.initServer;
+        allMode.initServer = function(server) {
+          const res = allMode._archibald_orig_initServer.apply(this, arguments);
+          try {
+            reparentSharedMailboxesCM2(about3PaneWin);
+          } catch (_) {}
+          return res;
+        };
+      }
+
+      // 2. Intercepter folderPane.addFolder
+      if (typeof folderPane.addFolder === "function") {
+        folderPane._archibald_orig_addFolder = folderPane.addFolder;
+        folderPane.addFolder = function(parentFolder, childFolder) {
+          const res = folderPane._archibald_orig_addFolder.apply(this, arguments);
+          try {
+            if (
+              (parentFolder && cm2IsFolderBalp(parentFolder)) ||
+              (childFolder && cm2IsFolderBalp(childFolder))
+            ) {
+              reparentSharedMailboxesCM2(about3PaneWin);
+              scheduleReparent(about3PaneWin, 50);
+            }
+          } catch (_) {}
+          return res;
+        };
+      }
+
+      // 3. Intercepter folderPane.changeFolderFlag
+      if (typeof folderPane.changeFolderFlag === "function") {
+        folderPane._archibald_orig_changeFolderFlag = folderPane.changeFolderFlag;
+        folderPane.changeFolderFlag = function(folder, oldValue, newValue) {
+          const res = folderPane._archibald_orig_changeFolderFlag.apply(this, arguments);
+          try {
+            if (folder && cm2IsFolderBalp(folder)) {
+              reparentSharedMailboxesCM2(about3PaneWin);
+            }
+          } catch (_) {}
+          return res;
+        };
+      }
+
+      // 4. Intercepter threadPaneHeader.onFolderSelected
+      if (about3PaneWin.threadPaneHeader && typeof about3PaneWin.threadPaneHeader.onFolderSelected === "function") {
+        const tph = about3PaneWin.threadPaneHeader;
+        tph._archibald_orig_onFolderSelected = tph.onFolderSelected;
+        tph.onFolderSelected = function() {
+          const res = tph._archibald_orig_onFolderSelected.apply(this, arguments);
+          try {
+            if (about3PaneWin.gFolder && cm2IsEntrantBalp(about3PaneWin.gFolder)) {
+              if (this.folderName) {
+                this.folderName.textContent = CM2_COURRIER_ENTRANT;
+              }
+              about3PaneWin.document.title = `${CM2_COURRIER_ENTRANT} - ${about3PaneWin.gFolder.server.prettyName}`;
+            }
+          } catch (_) {}
+          return res;
+        };
+      }
+
+      console.log("[Archibald] Hooks BALP installés sur about:3pane");
+    }
+
+    reparentSharedMailboxesCM2(about3PaneWin);
+    scheduleReparent(about3PaneWin, 150);
+    scheduleReparent(about3PaneWin, 500);
+    scheduleReparent(about3PaneWin, 1500);
+    scheduleReparent(about3PaneWin, 3500);
+  } catch (e) {
+    console.error("[Archibald] Erreur dans setupAbout3PaneBalpHooks:", e);
+  }
+}
+
+function getAbout3PaneWindowsFromTopWindow(w) {
+  const result = new Set();
+  if (!w || w.closed) return result;
+  try {
+    if (w.location?.href?.startsWith("about:3pane")) {
+      result.add(w);
+      return result;
+    }
+  } catch (_) {}
+
+  try {
+    if (w.gTabmail?.tabInfo) {
+      for (const tab of w.gTabmail.tabInfo) {
+        const cw = tab?.chromeBrowser?.contentWindow || tab?.browser?.contentWindow;
+        if (cw && !cw.closed && cw.location?.href?.startsWith("about:3pane")) {
+          result.add(cw);
+        }
+      }
+    }
+  } catch (_) {}
+
+  try {
+    const browsers = w.document?.querySelectorAll("browser") || [];
+    for (const b of browsers) {
+      const cw = b?.contentWindow;
+      if (cw && !cw.closed && cw.location?.href?.startsWith("about:3pane")) {
+        result.add(cw);
+      }
+    }
+  } catch (_) {}
+
+  return result;
+}
+
+function cleanupAbout3PaneBalpHooks(about3PaneWin) {
+  try {
+    if (!about3PaneWin || !about3PaneWin._archibald_balp_hooks_installed) return;
+    const { folderPane, threadPaneHeader } = about3PaneWin;
+    if (folderPane) {
+      if (folderPane._modes?.all?._archibald_orig_initServer) {
+        folderPane._modes.all.initServer = folderPane._modes.all._archibald_orig_initServer;
+        delete folderPane._modes.all._archibald_orig_initServer;
+      }
+      if (folderPane._archibald_orig_addFolder) {
+        folderPane.addFolder = folderPane._archibald_orig_addFolder;
+        delete folderPane._archibald_orig_addFolder;
+      }
+      if (folderPane._archibald_orig_changeFolderFlag) {
+        folderPane.changeFolderFlag = folderPane._archibald_orig_changeFolderFlag;
+        delete folderPane._archibald_orig_changeFolderFlag;
+      }
+    }
+    if (threadPaneHeader?._archibald_orig_onFolderSelected) {
+      threadPaneHeader.onFolderSelected = threadPaneHeader._archibald_orig_onFolderSelected;
+      delete threadPaneHeader._archibald_orig_onFolderSelected;
+    }
+    about3PaneWin._archibald_balp_hooks_installed = false;
+  } catch (_) {}
+}
 // ================================= FIN HELPERS ============================================
+
+let _archibaldGlobalListenersRegistered = false;
 
 this.archibaldApi = class extends ExtensionAPI {
   getAPI(context) {
@@ -732,14 +1309,30 @@ this.archibaldApi = class extends ExtensionAPI {
         init() {
           try {
             function initSingleWindow(w) {
-              if (!w) return;
-              if (w._archibald_window_init_done) {
+              if (!w || w.closed) return;
+              const href = w.location?.href || "";
+
+              if (href.startsWith("about:3pane")) {
+                setupAbout3PaneBalpHooks(w);
                 return;
               }
-              w._archibald_window_init_done = true;
 
-              injectThemeOverrideStyle(w);
-              setupSpacesToolbarObserver(w);
+              if (!w._archibald_window_init_done) {
+                w._archibald_window_init_done = true;
+                injectThemeOverrideStyle(w);
+                setupSpacesToolbarObserver(w);
+              }
+
+              // Initialiser également toutes les sous-fenêtres about:3pane contenues dans ce messenger.xhtml
+              const about3PaneWins = getAbout3PaneWindowsFromTopWindow(w);
+              for (const a3pWin of about3PaneWins) {
+                setupAbout3PaneBalpHooks(a3pWin);
+              }
+              w.setTimeout(() => {
+                for (const a3pWin of getAbout3PaneWindowsFromTopWindow(w)) {
+                  setupAbout3PaneBalpHooks(a3pWin);
+                }
+              }, 300);
             }
 
             // Initialiser les fenêtres déjà ouvertes
@@ -750,6 +1343,11 @@ this.archibaldApi = class extends ExtensionAPI {
               initSingleWindow(win);
               winCount++;
             }
+
+            if (_archibaldGlobalListenersRegistered) {
+              return;
+            }
+            _archibaldGlobalListenersRegistered = true;
             console.log(`[Archibald] init: ${winCount} fenêtre(s) mail:3pane initialisée(s) au démarrage`);
 
             // Écouter les fenêtres futures via window-mediator
@@ -799,8 +1397,57 @@ this.archibaldApi = class extends ExtensionAPI {
               obsService.addObserver(docObserver, "chrome-document-loaded");
             }
 
+            // Écouter les ajouts dynamiques de dossiers IMAP pour réorganiser les BALP à la volée
+            const balpFolderListener = {
+              onFolderAdded(parentFolder, childFolder) {
+                try {
+                  if (
+                    (parentFolder && cm2IsFolderBalp(parentFolder)) ||
+                    (childFolder && cm2IsFolderBalp(childFolder))
+                  ) {
+                    const winEnum = WM.getEnumerator("mail:3pane");
+                    while (winEnum.hasMoreElements()) {
+                      const topWin = winEnum.getNext();
+                      for (const a3pWin of getAbout3PaneWindowsFromTopWindow(topWin)) {
+                        scheduleReparent(a3pWin, 20);
+                        scheduleReparent(a3pWin, 200);
+                      }
+                    }
+                  }
+                } catch (_) {}
+              },
+              onMessageAdded() {},
+              onFolderRemoved() {},
+              onMessageRemoved() {},
+              onFolderPropertyChanged() {},
+              onFolderIntPropertyChanged(folder, property, oldValue, newValue) {
+                try {
+                  if (folder && cm2IsFolderBalp(folder) && String(property) === "FolderFlag") {
+                    const winEnum = WM.getEnumerator("mail:3pane");
+                    while (winEnum.hasMoreElements()) {
+                      const topWin = winEnum.getNext();
+                      for (const a3pWin of getAbout3PaneWindowsFromTopWindow(topWin)) {
+                        scheduleReparent(a3pWin, 20);
+                      }
+                    }
+                  }
+                } catch (_) {}
+              },
+              onFolderBoolPropertyChanged() {},
+              onFolderUnicharPropertyChanged() {},
+              onFolderPropertyFlagChanged() {},
+              onFolderEvent() {},
+            };
+            try {
+              MailServices.mailSession.AddFolderListener(
+                balpFolderListener,
+                Ci.nsIFolderListener.added | Ci.nsIFolderListener.intPropertyChanged
+              );
+            } catch (_) {}
+
             context.callOnClose({
               close() {
+                _archibaldGlobalListenersRegistered = false;
                 try {
                   WM.removeListener(winListener);
                 } catch (e) {}
@@ -808,6 +1455,9 @@ this.archibaldApi = class extends ExtensionAPI {
                   if (obsService && docObserver) {
                     obsService.removeObserver(docObserver, "chrome-document-loaded");
                   }
+                } catch (e) {}
+                try {
+                  MailServices.mailSession.RemoveFolderListener(balpFolderListener);
                 } catch (e) {}
                 try {
                   const enumerator = WM.getEnumerator("mail:3pane");
@@ -822,6 +1472,9 @@ this.archibaldApi = class extends ExtensionAPI {
                       w._archibald_media_listener = null;
                     }
                     w._archibald_window_init_done = false;
+                    for (const a3pWin of getAbout3PaneWindowsFromTopWindow(w)) {
+                      cleanupAbout3PaneBalpHooks(a3pWin);
+                    }
                   }
                 } catch (e) {}
               }
